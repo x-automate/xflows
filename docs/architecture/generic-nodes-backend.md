@@ -50,6 +50,39 @@ This keeps behavior consistent across:
 - Temporal worker path
 - API local fallback path
 
+## Built-in node component IDs
+
+The default registry now includes these node component IDs:
+
+- Input / template / output:
+  - `Input`
+  - `PromptTemplate`
+  - `Output`
+- LLM:
+  - `LLM`
+  - `OpenAIChat`
+  - `AnthropicChat`
+  - `ReActAgent`
+  - `LiteLLM`
+- HTTP:
+  - `HttpRequest`
+  - `ApiCaller` (alias: `ApiCall`)
+- Triggers:
+  - `Webhook` (alias: `WebhookTrigger`)
+- Tracing:
+  - `LangfuseTracer`
+  - `LangsmithTracer`
+
+### Node-specific config shape
+
+- `LiteLLM`: `model`, `temperature`, `apiBase`
+- `Webhook`: `path`, `method`, `secretHeader`
+- `ApiCaller`: `url`, `method`
+- `LangfuseTracer`: `host`, `publicKey`, `tags`
+- `LangsmithTracer`: `endpoint`, `project`, `tags`
+
+For tracer nodes, execution is pass-through (input value is preserved) while trace config is attached as output metadata.
+
 ## How to add a new node type
 
 The same pattern applies for both worker and API fallback. Today the modules are mirrored in both services, so add the node in both `apps/workers/app/nodes` and `apps/api/app/nodes` to preserve parity.

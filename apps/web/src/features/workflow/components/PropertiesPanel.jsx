@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import {
   CATEGORY_COLORS,
-  XFLOWS_CATALOG,
   XFLOWS_ICONS,
+  getComponentMeta,
 } from "../catalog/catalog-meta";
 
 function PropertiesPanel({ node, onSave }) {
-  const meta = XFLOWS_CATALOG.find((component) => component.id === node.componentId);
+  const meta = getComponentMeta(node.componentId);
   const [vals, setVals] = useState(() => {
     const next = {};
     for (const param of meta?.params || []) {

@@ -100,26 +100,44 @@ async def run_litellm_chat(
     system_prompt: str | None = None,
     model_hint: str | None = None,
     temperature: float = 0.2,
+    runtime_config: dict[str, Any] | None = None,
 ) -> str:
-    model = model_hint or settings.litellm_model_alias
-    payload = {
-        "model": model,
-        "messages": (
-            [{"role": "system", "content": system_prompt}] if system_prompt else []
-        )
-        + [{"role": "user", "content": prompt}],
-        "temperature": temperature,
-    }
+    runtime_config = runtime_config or {}
+    model = model_hint or str(runtime_config.get("litellmModel") or settings.litellm_model_alias)
     headers = {"Content-Type": "application/json"}
-    auth_key = settings.litellm_api_key or settings.litellm_master_key
+    auth_key = (
+        runtime_config.get("litellmApiKey")
+        or settings.litellm_api_key
+        or settings.litellm_master_key
+    )
     if auth_key:
         headers["Authorization"] = f"Bearer {auth_key}"
 
-    async with httpx.AsyncClient(base_url=settings.litellm_base_url, timeout=60.0) as client:
-        response = await client.post("/v1/chat/completions", headers=headers, json=payload)
-        response.raise_for_status()
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
+    base_url = str(runtime_config.get("litellmBaseUrl") or settings.litellm_base_url)
+    candidate_models = [model]
+
+    last_error = "LiteLLM request failed"
+    async with httpx.AsyncClient(base_url=base_url, timeout=60.0) as client:
+        for candidate_model in dict.fromkeys(candidate_models):
+            payload = {
+                "model": candidate_model,
+                "messages": (
+                    [{"role": "system", "content": system_prompt}] if system_prompt else []
+                )
+                + [{"role": "user", "content": prompt}],
+                "temperature": temperature,
+            }
+            response = await client.post("/v1/chat/completions", headers=headers, json=payload)
+            if response.status_code < 400:
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
+            body = response.text.strip()
+            last_error = (
+                f"LiteLLM chat failed (status={response.status_code}, model={candidate_model}): "
+                f"{body or response.reason_phrase}"
+            )
+            break
+    raise RuntimeError(last_error)
 
 
 async def execute_local_run(run: RunRecord, workflow: WorkflowRecord) -> None:
@@ -132,12 +150,28 @@ async def execute_local_run(run: RunRecord, workflow: WorkflowRecord) -> None:
         raw_edges = [edge.model_dump(mode="json") for edge in workflow.edges]
         nodes, edges = normalize_workflow_graph(raw_nodes, raw_edges)
         runner = NodeGraphRunner(nodes=nodes, edges=edges, user_input=run.input)
+        runtime_config = (
+            run.metadata.get("runtimeConfig", {})
+            if isinstance(run.metadata.get("runtimeConfig"), dict)
+            else {}
+        )
+
+        async def llm_chat(prompt: str, system_prompt: str | None, model_hint: str | None, temperature: float) -> str:
+            return await run_litellm_chat(
+                prompt,
+                system_prompt,
+                model_hint,
+                temperature,
+                runtime_config=runtime_config,
+            )
+
         context = NodeExecutionContext(
             run_id=run.id,
             trace_id=run.traceId,
             user_input=run.input,
-            llm_chat=run_litellm_chat,
+            llm_chat=llm_chat,
             http_request=_http_request,
+            runtime_config=runtime_config,
         )
 
         async def execute(node: dict[str, Any], input_payload: dict[str, Any]) -> dict[str, Any]:
@@ -148,7 +182,10 @@ async def execute_local_run(run: RunRecord, workflow: WorkflowRecord) -> None:
                 run.id,
                 "node_succeeded",
                 node_id=node_id,
-                payload={"output": result.get("value")},
+                payload={
+                    "output": result.get("value"),
+                    "metadata": {k: v for k, v in result.items() if k != "value"},
+                },
                 trace_id=run.traceId,
             )
             return result
@@ -341,7 +378,13 @@ async def _create_run_impl(
     temporal_status = await temporal_gateway.start_workflow(
         workflow_name="XFlowsWorkflow.run",
         workflow_id=f"{workflow_id}:{run.id}",
-        args=[workflow.model_dump(mode="json"), run.input, run.id, trace_id],
+        args=[
+            workflow.model_dump(mode="json"),
+            run.input,
+            run.id,
+            trace_id,
+            run.metadata.get("runtimeConfig", {}) if isinstance(run.metadata, dict) else {},
+        ],
     )
 
     if temporal_status.connected:

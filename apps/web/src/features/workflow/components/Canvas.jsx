@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CATEGORY_COLORS,
-  XFLOWS_CATALOG,
   XFLOWS_ICONS,
+  getComponentMeta,
 } from "../catalog/catalog-meta";
 
 const NODE_W = 132;
@@ -38,8 +38,7 @@ function Canvas({
     () => Object.fromEntries(nodes.map((node) => [node.id, node])),
     [nodes]
   );
-  const metaOf = (node) =>
-    XFLOWS_CATALOG.find((component) => component.id === node.componentId);
+  const metaOf = (node) => getComponentMeta(node.componentId);
 
   const onWheel = (event) => {
     event.preventDefault();

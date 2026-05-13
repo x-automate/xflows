@@ -1,0 +1,376 @@
+{
+  "categoryColors": {
+    "I/O": { "fg": "#1f2937", "bg": "#f1f5f9", "dot": "#475569" },
+    "Prompt": { "fg": "#6b3aa0", "bg": "#f3eafd", "dot": "#8b5cf6" },
+    "LLM": { "fg": "#0f766e", "bg": "#e6fbf6", "dot": "#14b8a6" },
+    "LLM-Provider": { "fg": "#0f766e", "bg": "#ccfbf1", "dot": "#0d9488" },
+    "Tool": { "fg": "#9a3412", "bg": "#fff1e6", "dot": "#f97316" },
+    "Memory": { "fg": "#1e40af", "bg": "#e8efff", "dot": "#3b82f6" },
+    "Router": { "fg": "#854d0e", "bg": "#fef7c8", "dot": "#eab308" },
+    "Parser": { "fg": "#155e75", "bg": "#e3f6fb", "dot": "#06b6d4" },
+    "Agent": { "fg": "#9f1239", "bg": "#ffe9ee", "dot": "#e11d48" },
+    "Format": { "fg": "#475569", "bg": "#eef2f7", "dot": "#64748b" },
+    "Observability": { "fg": "#7c2d12", "bg": "#fef3e2", "dot": "#c2410c" },
+    "Trigger": { "fg": "#1d4ed8", "bg": "#e0edff", "dot": "#2563eb" }
+  },
+  "components": [
+    {
+      "id": "Input",
+      "name": "Input",
+      "category": "I/O",
+      "kind": "input",
+      "icon": "input",
+      "desc": "User input - entry point of the workflow.",
+      "params": [],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "Output",
+      "name": "Output",
+      "category": "I/O",
+      "kind": "output",
+      "icon": "output",
+      "desc": "Final response shown to the user.",
+      "params": [],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "PromptTemplate",
+      "name": "Prompt",
+      "category": "Prompt",
+      "kind": "transform",
+      "icon": "prompt",
+      "desc": "Render a prompt by substituting {input} with the upstream value.",
+      "params": [
+        { "name": "template", "type": "textarea", "default": "Answer concisely:\n\n{input}" },
+        { "name": "system", "type": "textarea", "default": "You are a helpful assistant." }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "LLM",
+      "name": "LLM",
+      "category": "LLM",
+      "kind": "container",
+      "icon": "agent",
+      "desc": "LLM block - drop a provider inside it.",
+      "accepts": ["LLM-Provider"],
+      "configs": [
+        { "name": "tracer", "label": "tracer", "accepts": ["Observability"] },
+        { "name": "memory", "label": "memory", "accepts": ["Memory"] },
+        { "name": "tools", "label": "tools", "accepts": ["Tool"] }
+      ],
+      "params": [],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "OpenAIChat",
+      "name": "OpenAI",
+      "category": "LLM-Provider",
+      "kind": "provider",
+      "icon": "openai",
+      "requiresContainer": "LLM",
+      "desc": "Call OpenAI chat model through backend routing.",
+      "params": [
+        { "name": "model", "type": "select", "options": ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"], "default": "gpt-4o-mini" },
+        { "name": "temperature", "type": "number", "default": 0.7, "step": 0.1 },
+        { "name": "max_tokens", "type": "number", "default": 512 }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "AnthropicChat",
+      "name": "Claude",
+      "category": "LLM-Provider",
+      "kind": "provider",
+      "icon": "anthropic",
+      "requiresContainer": "LLM",
+      "desc": "Call Anthropic model through backend routing.",
+      "params": [
+        { "name": "model", "type": "select", "options": ["claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4"], "default": "claude-haiku-4-5" },
+        { "name": "temperature", "type": "number", "default": 0.7, "step": 0.1 },
+        { "name": "max_tokens", "type": "number", "default": 1024 }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "LiteLLM",
+      "name": "LiteLLM",
+      "category": "LLM-Provider",
+      "kind": "provider",
+      "icon": "litellm",
+      "requiresContainer": "LLM",
+      "desc": "Route model calls via LiteLLM provider gateway.",
+      "params": [
+        { "name": "model", "type": "text", "default": "openai/gpt-4o-mini" },
+        { "name": "temperature", "type": "number", "default": 0.2, "step": 0.1 },
+        { "name": "apiBase", "type": "text", "default": "http://litellm:4000" }
+      ],
+      "projectConfigs": [
+        {
+          "key": "litellmApiKey",
+          "label": "LiteLLM API key",
+          "type": "password",
+          "required": true,
+          "placeholder": "sk-...",
+          "help": "Used to authenticate requests from XFlows to LiteLLM."
+        },
+        {
+          "key": "litellmBaseUrl",
+          "label": "LiteLLM base URL",
+          "type": "text",
+          "required": true,
+          "default": "http://localhost:4000",
+          "help": "Base URL for LiteLLM (without /v1/chat/completions)."
+        },
+        {
+          "key": "litellmModel",
+          "label": "Default LiteLLM model",
+          "type": "text",
+          "required": true,
+          "default": "gpt-4o-mini",
+          "help": "Use the model alias exposed by your LiteLLM instance."
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "HttpRequest",
+      "name": "HTTP",
+      "category": "Tool",
+      "kind": "tool",
+      "icon": "http",
+      "desc": "Make an HTTP GET/POST request.",
+      "params": [
+        { "name": "method", "type": "select", "options": ["GET", "POST"], "default": "GET" },
+        { "name": "url", "type": "text", "default": "https://api.example.com/data" },
+        { "name": "body_uses_input", "type": "bool", "default": true }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "ApiCaller",
+      "name": "API Caller",
+      "category": "Tool",
+      "kind": "tool",
+      "icon": "http",
+      "desc": "Call an external API endpoint.",
+      "params": [
+        { "name": "method", "type": "select", "options": ["GET", "POST", "PUT", "PATCH", "DELETE"], "default": "GET" },
+        { "name": "url", "type": "text", "default": "https://api.example.com/data" }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "Webhook",
+      "name": "Webhook",
+      "category": "Trigger",
+      "kind": "input",
+      "icon": "hook",
+      "desc": "Trigger workflow execution from an external webhook.",
+      "params": [
+        { "name": "path", "type": "text", "default": "/webhook" },
+        { "name": "method", "type": "select", "options": ["POST", "PUT"], "default": "POST" },
+        { "name": "secretHeader", "type": "text", "default": "x-webhook-secret" }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "WebSearch",
+      "name": "Search",
+      "category": "Tool",
+      "kind": "tool",
+      "icon": "search",
+      "desc": "Search tool wrapper.",
+      "params": [{ "name": "top_k", "type": "number", "default": 3 }],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "CodeExec",
+      "name": "Code",
+      "category": "Tool",
+      "kind": "tool",
+      "icon": "code",
+      "desc": "Execute code in backend sandbox.",
+      "params": [{ "name": "code", "type": "textarea", "default": "return input.toUpperCase();" }],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "VectorStore",
+      "name": "Vector DB",
+      "category": "Memory",
+      "kind": "aux",
+      "icon": "vector",
+      "desc": "Vector retrieval - attach to LLM as memory.",
+      "params": [
+        { "name": "collection", "type": "text", "default": "docs" },
+        { "name": "top_k", "type": "number", "default": 3 },
+        { "name": "query", "type": "text", "default": "" }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "Summarizer",
+      "name": "Summarize",
+      "category": "Memory",
+      "kind": "transform",
+      "icon": "sum",
+      "desc": "Condense input by max chars.",
+      "params": [{ "name": "max_chars", "type": "number", "default": 200 }],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "IfElse",
+      "name": "If/Else",
+      "category": "Router",
+      "kind": "router",
+      "icon": "branch",
+      "desc": "Contains-check with warn/fail modes.",
+      "params": [
+        { "name": "contains", "type": "text", "default": "" },
+        { "name": "mode", "type": "select", "options": ["warn", "fail"], "default": "warn" }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "JsonParser",
+      "name": "JSON",
+      "category": "Parser",
+      "kind": "transform",
+      "icon": "json",
+      "desc": "Parse upstream text as JSON.",
+      "params": [{ "name": "extract_path", "type": "text", "default": "" }],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "RegexExtract",
+      "name": "Regex",
+      "category": "Parser",
+      "kind": "transform",
+      "icon": "regex",
+      "desc": "Extract first regex match group.",
+      "params": [
+        { "name": "pattern", "type": "text", "default": "\\d+" },
+        { "name": "flags", "type": "text", "default": "i" }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "ReActAgent",
+      "name": "ReAct",
+      "category": "Agent",
+      "kind": "llm",
+      "icon": "agent",
+      "desc": "Agent loop through backend orchestration.",
+      "params": [
+        { "name": "max_steps", "type": "number", "default": 3 },
+        { "name": "tools", "type": "text", "default": "search,calculator" }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "Markdown",
+      "name": "Markdown",
+      "category": "Format",
+      "kind": "transform",
+      "icon": "markdown",
+      "desc": "Wrap content in markdown.",
+      "params": [{ "name": "wrap", "type": "select", "options": ["as-is", "codeblock", "quote", "bullets"], "default": "as-is" }],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "Tracer",
+      "name": "Tracer",
+      "category": "Observability",
+      "kind": "aux",
+      "icon": "trace",
+      "desc": "Attach to LLM tracer config.",
+      "params": [
+        { "name": "level", "type": "select", "options": ["info", "debug", "verbose"], "default": "info" },
+        { "name": "destination", "type": "select", "options": ["console", "trace-panel", "both"], "default": "both" }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "LangfuseTracer",
+      "name": "Langfuse",
+      "category": "Observability",
+      "kind": "aux",
+      "icon": "trace",
+      "desc": "Attach Langfuse tracing config to the run.",
+      "params": [
+        { "name": "host", "type": "text", "default": "https://cloud.langfuse.com" },
+        { "name": "publicKey", "type": "text", "default": "" },
+        { "name": "tags", "type": "text", "default": "prod,web" }
+      ],
+      "projectConfigs": [
+        {
+          "key": "langfuseHost",
+          "label": "Langfuse host",
+          "type": "text",
+          "required": true,
+          "default": "https://cloud.langfuse.com"
+        },
+        {
+          "key": "langfusePublicKey",
+          "label": "Langfuse public key",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "langfuseSecretKey",
+          "label": "Langfuse secret key",
+          "type": "password",
+          "required": true
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "LangsmithTracer",
+      "name": "LangSmith",
+      "category": "Observability",
+      "kind": "aux",
+      "icon": "trace",
+      "desc": "Attach LangSmith tracing config to the run.",
+      "params": [
+        { "name": "endpoint", "type": "text", "default": "https://api.smith.langchain.com" },
+        { "name": "project", "type": "text", "default": "xflows" },
+        { "name": "tags", "type": "text", "default": "prod,web" }
+      ],
+      "projectConfigs": [
+        {
+          "key": "langsmithEndpoint",
+          "label": "LangSmith endpoint",
+          "type": "text",
+          "required": true,
+          "default": "https://api.smith.langchain.com"
+        },
+        {
+          "key": "langsmithProject",
+          "label": "LangSmith project",
+          "type": "text",
+          "required": true,
+          "default": "xflows"
+        },
+        {
+          "key": "langsmithApiKey",
+          "label": "LangSmith API key",
+          "type": "password",
+          "required": true
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "Guardrail",
+      "name": "Guardrail",
+      "category": "Observability",
+      "kind": "aux",
+      "icon": "guard",
+      "desc": "Guard checks attached to LLM tracing.",
+      "params": [{ "name": "forbidden", "type": "text", "default": "password,secret" }],
+      "backendActivity": "xflows.execute_node"
+    }
+  ]
+}

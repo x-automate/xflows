@@ -49,11 +49,11 @@ export async function updateProject(projectId, payload) {
   return parseResponse(response);
 }
 
-export async function startRun(workflowId, input) {
+export async function startRun(workflowId, input, metadata = {}) {
   const response = await fetch(`${API_BASE_URL}/workflows/${workflowId}/runs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ input }),
+    body: JSON.stringify({ input, metadata }),
   });
   return parseResponse(response);
 }

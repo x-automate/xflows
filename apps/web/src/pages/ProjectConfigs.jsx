@@ -1,34 +1,48 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useOutletContext, useParams } from "react-router-dom";
 import { updateProject as updateProjectApi } from "../lib/api/workflowApi";
-import { updateProject } from "../lib/projectStore";
+import { getProject as getLocalProject, updateProject } from "../lib/projectStore";
+import { getRequiredProjectConfigs } from "../features/workflow/catalog/catalog-meta";
 
 function ProjectConfigs() {
   const { projectId } = useParams();
   const { project } = useOutletContext();
-  const secretKey = `xflows_secret_${projectId}_openai`;
-  const [configs, setConfigs] = useState(() => ({
-    ...project.configs,
-    openaiApiKey: sessionStorage.getItem(secretKey) || "",
-  }));
+  const localProject = useMemo(
+    () => getLocalProject(projectId),
+    [projectId, project?.updatedAt]
+  );
+  const graphNodes = localProject?.graph?.nodes || project?.graph?.nodes || [];
+  const requiredConfigs = useMemo(
+    () => getRequiredProjectConfigs(graphNodes),
+    [graphNodes]
+  );
+  const [configs, setConfigs] = useState(() => ({ ...(project.configs || {}) }));
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setConfigs((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const requirement of requiredConfigs) {
+        if (!(requirement.key in next) && requirement.default !== undefined) {
+          next[requirement.key] = requirement.default;
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [requiredConfigs]);
 
   const update = (key, value) => {
     setSaved(false);
     setConfigs((current) => ({ ...current, [key]: value }));
   };
 
-  const [error, setError] = useState("");
-
   const onSubmit = async (event) => {
     event.preventDefault();
-    sessionStorage.setItem(secretKey, configs.openaiApiKey || "");
-    const { openaiApiKey, ...projectConfigs } = configs;
     const updates = {
-      configs: {
-        ...projectConfigs,
-        hasOpenAIKey: Boolean(openaiApiKey),
-      },
+      configs: configs,
     };
     updateProject(projectId, updates);
     try {
@@ -45,48 +59,72 @@ function ProjectConfigs() {
     <section className="panel project-panel">
       <h2>Credentials & Global Model Parameters</h2>
       <p className="muted">
-        Store project-level provider settings used by the flow during tests and scheduled runs.
+        Required fields are derived from nodes currently present in your flow.
       </p>
       <form className="form-grid" onSubmit={onSubmit}>
-        <label>
-          OpenAI API key
-          <input
-            type="password"
-            value={configs.openaiApiKey || ""}
-            placeholder="sk-..."
-            onChange={(event) => update("openaiApiKey", event.target.value)}
-          />
-        </label>
-        <label>
-          Model
-          <select
-            value={configs.model}
-            onChange={(event) => update("model", event.target.value)}
-          >
-            <option value="gpt-4o-mini">gpt-4o-mini</option>
-            <option value="gpt-4o">gpt-4o</option>
-            <option value="gpt-4-turbo">gpt-4-turbo</option>
-          </select>
-        </label>
-        <label>
-          Temperature
-          <input
-            type="number"
-            min="0"
-            max="2"
-            step="0.1"
-            value={configs.temperature}
-            onChange={(event) => update("temperature", Number(event.target.value))}
-          />
-        </label>
-        <label>
-          Max tokens
-          <input
-            type="number"
-            value={configs.maxTokens}
-            onChange={(event) => update("maxTokens", Number(event.target.value))}
-          />
-        </label>
+        {requiredConfigs.length === 0 && (
+          <p className="muted">
+            No node-specific global configs are required for the current flow.
+          </p>
+        )}
+        {requiredConfigs.map((config) => {
+          const currentValue =
+            configs[config.key] ?? config.default ?? "";
+          if (config.type === "select") {
+            return (
+              <label key={config.key}>
+                {config.label}
+                <select
+                  required={Boolean(config.required)}
+                  value={currentValue}
+                  onChange={(event) => update(config.key, event.target.value)}
+                >
+                  {(config.options || []).map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                {config.help && <span className="muted">{config.help}</span>}
+              </label>
+            );
+          }
+          if (config.type === "number") {
+            return (
+              <label key={config.key}>
+                {config.label}
+                <input
+                  type="number"
+                  required={Boolean(config.required)}
+                  value={currentValue}
+                  step={config.step || 1}
+                  min={config.min}
+                  max={config.max}
+                  onChange={(event) =>
+                    update(
+                      config.key,
+                      event.target.value === "" ? "" : Number(event.target.value)
+                    )
+                  }
+                />
+                {config.help && <span className="muted">{config.help}</span>}
+              </label>
+            );
+          }
+          return (
+            <label key={config.key}>
+              {config.label}
+              <input
+                type={config.type === "password" ? "password" : "text"}
+                required={Boolean(config.required)}
+                value={currentValue}
+                placeholder={config.placeholder || ""}
+                onChange={(event) => update(config.key, event.target.value)}
+              />
+              {config.help && <span className="muted">{config.help}</span>}
+            </label>
+          );
+        })}
         <button type="submit" className="btn btn-primary">
           Save configs
         </button>

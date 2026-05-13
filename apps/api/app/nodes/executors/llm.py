@@ -17,10 +17,24 @@ class ChatLikeExecutor(BaseNodeExecutor):
         context: NodeExecutionContext,
     ) -> NodeExecutionResult:
         params = node.get("params", {}) or {}
+        runtime_config = context.runtime_config or {}
+        model_hint = (
+            str(params.get("model"))
+            if params.get("model") is not None
+            else (
+                str(runtime_config.get("litellmModel"))
+                if runtime_config.get("litellmModel") is not None
+                else None
+            )
+        )
+        temperature = float(params.get("temperature", runtime_config.get("temperature", 0.2)))
         content = await context.llm_chat(
             str(input_payload.get("value", "")),
             input_payload.get("system") if isinstance(input_payload.get("system"), str) else None,
-            str(params.get("model")) if params.get("model") is not None else None,
-            float(params.get("temperature", 0.2)),
+            model_hint,
+            temperature,
         )
-        return NodeExecutionResult(value=content)
+        metadata = {}
+        if model_hint:
+            metadata["model"] = model_hint
+        return NodeExecutionResult(value=content, metadata=metadata)

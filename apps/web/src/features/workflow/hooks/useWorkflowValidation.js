@@ -1,8 +1,8 @@
 import { useMemo } from "react";
-import { XFLOWS_CATALOG } from "../catalog/catalog-meta";
+import { getComponentMeta } from "../catalog/catalog-meta";
 
 const meta = (node) =>
-  XFLOWS_CATALOG.find((component) => component.id === node.componentId) || {
+  getComponentMeta(node.componentId) || {
     name: "?",
     kind: "transform",
     params: [],

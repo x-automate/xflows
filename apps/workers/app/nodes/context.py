@@ -15,3 +15,4 @@ class NodeExecutionContext:
     user_input: str
     llm_chat: LlmChatCallable
     http_request: HttpRequestCallable
+    runtime_config: dict[str, Any]

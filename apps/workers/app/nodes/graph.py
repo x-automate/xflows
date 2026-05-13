@@ -9,7 +9,28 @@ def normalize_workflow_graph(
     nodes: list[dict[str, Any]],
     edges: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    normalized_nodes = [node for node in nodes if not node.get("parent")]
+    children_by_parent: dict[str, list[dict[str, Any]]] = {}
+    for node in nodes:
+        parent_id = node.get("parent")
+        if parent_id:
+            children_by_parent.setdefault(str(parent_id), []).append(node)
+
+    normalized_nodes: list[dict[str, Any]] = []
+    for node in nodes:
+        if node.get("parent"):
+            continue
+        merged = dict(node)
+        children = children_by_parent.get(str(node.get("id")), [])
+        provider_child = children[0] if children else None
+        if provider_child:
+            merged["componentId"] = provider_child.get("componentId", merged.get("componentId"))
+            merged["params"] = {
+                **(node.get("params", {}) or {}),
+                **(provider_child.get("params", {}) or {}),
+            }
+            merged["providerComponentId"] = provider_child.get("componentId")
+        normalized_nodes.append(merged)
+
     node_ids = {node["id"] for node in normalized_nodes}
     normalized_edges = [
         edge

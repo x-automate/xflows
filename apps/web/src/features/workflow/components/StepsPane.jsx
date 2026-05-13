@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CATEGORY_COLORS, XFLOWS_CATALOG } from "../catalog/catalog-meta";
+import { CATEGORY_COLORS, getComponentMeta } from "../catalog/catalog-meta";
 import { useWorkflowValidation } from "../hooks/useWorkflowValidation";
 import PropertiesPanel from "./PropertiesPanel";
 
@@ -13,8 +13,6 @@ function StepsPane({
   onDelete,
   onRun,
   runState,
-  apiKeys,
-  setApiKeys,
 }) {
   const validation = useWorkflowValidation(nodes, edges);
   const [tab, setTab] = useState("properties");
@@ -89,7 +87,7 @@ function StepsPane({
           )}
           <ol className="wf-step-list">
             {orderedNodes.map((node, index) => {
-              const meta = XFLOWS_CATALOG.find((component) => component.id === node.componentId);
+              const meta = getComponentMeta(node.componentId);
               if (!meta) return null;
               const color = CATEGORY_COLORS[meta.category];
               return (
@@ -155,8 +153,6 @@ function StepsPane({
           onRun={onRun}
           canRun={validation.errors.length === 0}
           validationErrors={validation.errors}
-          apiKeys={apiKeys}
-          setApiKeys={setApiKeys}
         />
       )}
 
@@ -190,13 +186,9 @@ function TestPanel({
   runState,
   canRun,
   validationErrors,
-  apiKeys,
-  setApiKeys,
 }) {
   const [input, setInput] = useState("What is the capital of France?");
-  const [showKeys, setShowKeys] = useState(false);
   const logRef = useRef(null);
-  const usesOpenAI = nodes.some((node) => node.componentId === "OpenAIChat");
 
   useEffect(() => {
     if (logRef.current) {
@@ -216,12 +208,6 @@ function TestPanel({
           onChange={(event) => setInput(event.target.value)}
         />
         <div className="wf-test-actions">
-          <button className="wf-keys-btn" onClick={() => setShowKeys((current) => !current)}>
-            API keys{" "}
-            {usesOpenAI && !apiKeys?.openai ? (
-              <span className="wf-key-warn">required</span>
-            ) : null}
-          </button>
           <button
             className={`wf-run-btn${canRun && !runState.running ? "" : " disabled"}`}
             onClick={() => canRun && !runState.running && onRun(input)}
@@ -230,26 +216,6 @@ function TestPanel({
             {runState.running ? "Running..." : "Run workflow"}
           </button>
         </div>
-        {showKeys && (
-          <div className="wf-keys-panel">
-            <div className="wf-field">
-              <label>
-                <span className="wf-field-name">OpenAI API key</span>
-              </label>
-              <input
-                type="password"
-                placeholder="sk-..."
-                value={apiKeys?.openai || ""}
-                onChange={(event) =>
-                  setApiKeys({ ...(apiKeys || {}), openai: event.target.value })
-                }
-              />
-              <div className="wf-field-help">
-                Stored only in this browser session. Used by OpenAI provider nodes.
-              </div>
-            </div>
-          </div>
-        )}
         {!canRun && validationErrors.length > 0 && (
           <div className="wf-test-warn">Fix validation errors before running.</div>
         )}
@@ -263,9 +229,7 @@ function TestPanel({
           )}
           {runState.events.map((event, idx) => {
             const node = nodes.find((item) => item.id === event.nodeId);
-            const meta = node
-              ? XFLOWS_CATALOG.find((component) => component.id === node.componentId)
-              : null;
+            const meta = node ? getComponentMeta(node.componentId) : null;
             const name = meta?.name || event.nodeId || "-";
             if (event.type === "start") {
               return (
@@ -279,6 +243,8 @@ function TestPanel({
               );
             }
             if (event.type === "success") {
+              const provider = event.metadata?.provider;
+              const model = event.metadata?.model;
               return (
                 <div key={idx} className="wf-trace-row">
                   <span className="wf-trace-icon ok">✓</span>
@@ -286,6 +252,13 @@ function TestPanel({
                   <span className="wf-trace-msg">
                     {event.duration ? `${Math.round(event.duration)}ms` : ""}
                   </span>
+                  {(provider || model) && (
+                    <div className="wf-trace-output">
+                      {provider ? `provider=${provider}` : ""}
+                      {provider && model ? " " : ""}
+                      {model ? `model=${model}` : ""}
+                    </div>
+                  )}
                   {event.output != null && (
                     <div className="wf-trace-output">
                       {String(event.output).slice(0, 200)}

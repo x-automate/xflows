@@ -1,3 +1,5 @@
+import nodeRegistry from "./node-registry.json";
+
 export const XFLOWS_ICONS = {
   input: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h12"/><path d="M12 8l4 4-4 4"/><circle cx="20" cy="12" r="1.5" fill="currentColor"/></svg>',
   output: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="4" cy="12" r="1.5" fill="currentColor"/><path d="M8 12h12"/><path d="M16 8l4 4-4 4"/></svg>',
@@ -16,174 +18,36 @@ export const XFLOWS_ICONS = {
   markdown: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14V10l2 3 2-3v4M15 10v4M13 12l2 2 2-2"/></svg>',
   trace: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2"/></svg>',
   guard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg>',
+  litellm: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg>',
+  hook: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 8v7a4 4 0 1 0 8 0V7a3 3 0 0 0-6 0v8a2 2 0 1 0 4 0V9"/></svg>',
 };
 
-export const XFLOWS_CATALOG = [
-  { id: "Input", name: "Input", category: "I/O", kind: "input", icon: "input", desc: "User input - entry point of the workflow.", params: [] },
-  { id: "Output", name: "Output", category: "I/O", kind: "output", icon: "output", desc: "Final response shown to the user.", params: [] },
-  {
-    id: "PromptTemplate",
-    name: "Prompt",
-    category: "Prompt",
-    kind: "transform",
-    icon: "prompt",
-    desc: "Render a prompt by substituting {input} with the upstream value.",
-    params: [
-      { name: "template", type: "textarea", default: "Answer concisely:\n\n{input}" },
-      { name: "system", type: "textarea", default: "You are a helpful assistant." },
-    ],
-  },
-  {
-    id: "LLM",
-    name: "LLM",
-    category: "LLM",
-    kind: "container",
-    icon: "agent",
-    desc: "LLM block - drop a provider inside it.",
-    accepts: ["LLM-Provider"],
-    configs: [
-      { name: "tracer", label: "tracer", accepts: ["Observability"] },
-      { name: "memory", label: "memory", accepts: ["Memory"] },
-      { name: "tools", label: "tools", accepts: ["Tool"] },
-    ],
-    params: [],
-  },
-  {
-    id: "OpenAIChat",
-    name: "OpenAI",
-    category: "LLM-Provider",
-    kind: "provider",
-    icon: "openai",
-    requiresContainer: "LLM",
-    desc: "Call OpenAI chat model through backend routing.",
-    params: [
-      { name: "model", type: "select", options: ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"], default: "gpt-4o-mini" },
-      { name: "temperature", type: "number", default: 0.7, step: 0.1 },
-      { name: "max_tokens", type: "number", default: 512 },
-    ],
-  },
-  {
-    id: "AnthropicChat",
-    name: "Claude",
-    category: "LLM-Provider",
-    kind: "provider",
-    icon: "anthropic",
-    requiresContainer: "LLM",
-    desc: "Call Anthropic model through backend routing.",
-    params: [
-      { name: "model", type: "select", options: ["claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4"], default: "claude-haiku-4-5" },
-      { name: "temperature", type: "number", default: 0.7, step: 0.1 },
-      { name: "max_tokens", type: "number", default: 1024 },
-    ],
-  },
-  {
-    id: "HttpRequest",
-    name: "HTTP",
-    category: "Tool",
-    kind: "tool",
-    icon: "http",
-    desc: "Make an HTTP GET/POST request.",
-    params: [
-      { name: "method", type: "select", options: ["GET", "POST"], default: "GET" },
-      { name: "url", type: "text", default: "https://api.example.com/data" },
-      { name: "body_uses_input", type: "bool", default: true },
-    ],
-  },
-  { id: "WebSearch", name: "Search", category: "Tool", kind: "tool", icon: "search", desc: "Search tool wrapper.", params: [{ name: "top_k", type: "number", default: 3 }] },
-  { id: "CodeExec", name: "Code", category: "Tool", kind: "tool", icon: "code", desc: "Execute code in backend sandbox.", params: [{ name: "code", type: "textarea", default: "return input.toUpperCase();" }] },
-  {
-    id: "VectorStore",
-    name: "Vector DB",
-    category: "Memory",
-    kind: "aux",
-    icon: "vector",
-    desc: "Vector retrieval - attach to LLM as memory.",
-    params: [
-      { name: "collection", type: "text", default: "docs" },
-      { name: "top_k", type: "number", default: 3 },
-      { name: "query", type: "text", default: "" },
-    ],
-  },
-  { id: "Summarizer", name: "Summarize", category: "Memory", kind: "transform", icon: "sum", desc: "Condense input by max chars.", params: [{ name: "max_chars", type: "number", default: 200 }] },
-  {
-    id: "IfElse",
-    name: "If/Else",
-    category: "Router",
-    kind: "router",
-    icon: "branch",
-    desc: "Contains-check with warn/fail modes.",
-    params: [
-      { name: "contains", type: "text", default: "" },
-      { name: "mode", type: "select", options: ["warn", "fail"], default: "warn" },
-    ],
-  },
-  { id: "JsonParser", name: "JSON", category: "Parser", kind: "transform", icon: "json", desc: "Parse upstream text as JSON.", params: [{ name: "extract_path", type: "text", default: "" }] },
-  {
-    id: "RegexExtract",
-    name: "Regex",
-    category: "Parser",
-    kind: "transform",
-    icon: "regex",
-    desc: "Extract first regex match group.",
-    params: [
-      { name: "pattern", type: "text", default: "\\d+" },
-      { name: "flags", type: "text", default: "i" },
-    ],
-  },
-  {
-    id: "ReActAgent",
-    name: "ReAct",
-    category: "Agent",
-    kind: "llm",
-    icon: "agent",
-    desc: "Agent loop through backend orchestration.",
-    params: [
-      { name: "max_steps", type: "number", default: 3 },
-      { name: "tools", type: "text", default: "search,calculator" },
-    ],
-  },
-  {
-    id: "Markdown",
-    name: "Markdown",
-    category: "Format",
-    kind: "transform",
-    icon: "markdown",
-    desc: "Wrap content in markdown.",
-    params: [{ name: "wrap", type: "select", options: ["as-is", "codeblock", "quote", "bullets"], default: "as-is" }],
-  },
-  {
-    id: "Tracer",
-    name: "Tracer",
-    category: "Observability",
-    kind: "aux",
-    icon: "trace",
-    desc: "Attach to LLM tracer config.",
-    params: [
-      { name: "level", type: "select", options: ["info", "debug", "verbose"], default: "info" },
-      { name: "destination", type: "select", options: ["console", "trace-panel", "both"], default: "both" },
-    ],
-  },
-  {
-    id: "Guardrail",
-    name: "Guardrail",
-    category: "Observability",
-    kind: "aux",
-    icon: "guard",
-    desc: "Guard checks attached to LLM tracing.",
-    params: [{ name: "forbidden", type: "text", default: "password,secret" }],
-  },
-];
+export const XFLOWS_CATALOG = nodeRegistry.components;
+export const CATEGORY_COLORS = nodeRegistry.categoryColors;
 
-export const CATEGORY_COLORS = {
-  "I/O": { fg: "#1f2937", bg: "#f1f5f9", dot: "#475569" },
-  Prompt: { fg: "#6b3aa0", bg: "#f3eafd", dot: "#8b5cf6" },
-  LLM: { fg: "#0f766e", bg: "#e6fbf6", dot: "#14b8a6" },
-  "LLM-Provider": { fg: "#0f766e", bg: "#ccfbf1", dot: "#0d9488" },
-  Tool: { fg: "#9a3412", bg: "#fff1e6", dot: "#f97316" },
-  Memory: { fg: "#1e40af", bg: "#e8efff", dot: "#3b82f6" },
-  Router: { fg: "#854d0e", bg: "#fef7c8", dot: "#eab308" },
-  Parser: { fg: "#155e75", bg: "#e3f6fb", dot: "#06b6d4" },
-  Agent: { fg: "#9f1239", bg: "#ffe9ee", dot: "#e11d48" },
-  Format: { fg: "#475569", bg: "#eef2f7", dot: "#64748b" },
-  Observability: { fg: "#7c2d12", bg: "#fef3e2", dot: "#c2410c" },
-};
+const CATALOG_BY_ID = Object.fromEntries(
+  XFLOWS_CATALOG.map((component) => [component.id, component])
+);
+
+export function getComponentMeta(componentId) {
+  return CATALOG_BY_ID[componentId] || null;
+}
+
+export function getRequiredProjectConfigs(nodes = []) {
+  const seen = new Set();
+  const requirements = [];
+  for (const node of nodes) {
+    const meta = getComponentMeta(node.componentId);
+    const projectConfigs = meta?.projectConfigs || [];
+    for (const config of projectConfigs) {
+      if (!config?.key || seen.has(config.key)) continue;
+      seen.add(config.key);
+      requirements.push({
+        ...config,
+        componentId: meta.id,
+        componentName: meta.name,
+      });
+    }
+  }
+  return requirements;
+}

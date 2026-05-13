@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { CATEGORY_COLORS, XFLOWS_CATALOG } from "../catalog/catalog-meta";
+import { CATEGORY_COLORS, getComponentMeta } from "../catalog/catalog-meta";
 
 function ParamModal({ node, onClose, onSave }) {
-  const meta = XFLOWS_CATALOG.find((component) => component.id === node.componentId);
+  const meta = getComponentMeta(node.componentId);
   const [vals, setVals] = useState(() => {
     const next = {};
     for (const param of meta.params) {

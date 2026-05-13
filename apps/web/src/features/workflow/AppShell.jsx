@@ -7,7 +7,7 @@ import {
   updateProject as updateProjectApi,
 } from "../../lib/api/workflowApi";
 import { getProject, updateProjectGraph } from "../../lib/projectStore";
-import { XFLOWS_CATALOG } from "./catalog/catalog-meta";
+import { getComponentMeta } from "./catalog/catalog-meta";
 import { getUnsupportedComponents } from "./catalog/execution-map";
 import { useWorkflowValidation } from "./hooks/useWorkflowValidation";
 import Canvas from "./components/Canvas";
@@ -81,13 +81,6 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
   const [query, setQuery] = useState("");
   const [history, setHistory] = useState({ past: [], future: [] });
   const [toast, setToast] = useState(null);
-  const [apiKeys, setApiKeys] = useState(() => {
-    try {
-      return JSON.parse(sessionStorage.getItem("xflows_keys") || "{}");
-    } catch {
-      return {};
-    }
-  });
   const [runState, setRunState] = useState({
     running: false,
     runId: null,
@@ -98,10 +91,6 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
     finalOutput: null,
   });
   const validation = useWorkflowValidation(nodes, edges);
-
-  useEffect(() => {
-    sessionStorage.setItem("xflows_keys", JSON.stringify(apiKeys));
-  }, [apiKeys]);
 
   useEffect(() => {
     if (projectId && !readOnly) {
@@ -158,13 +147,13 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
 
   const addNodeAt = (componentId, pos, dropTargetId) => {
     if (readOnly) return;
-    const meta = XFLOWS_CATALOG.find((component) => component.id === componentId);
+    const meta = getComponentMeta(componentId);
     if (!meta) return;
     if (dropTargetId) {
       const container = nodes.find((node) => node.id === dropTargetId);
-      const containerMeta =
-        container &&
-        XFLOWS_CATALOG.find((component) => component.id === container.componentId);
+      const containerMeta = container
+        ? getComponentMeta(container.componentId)
+        : null;
       if (
         containerMeta?.kind === "container" &&
         containerMeta.accepts?.includes(meta.category)
@@ -317,11 +306,13 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
       return { type: "start", nodeId: eventPayload.nodeId };
     }
     if (eventPayload.type === "node_succeeded") {
+      const payloadMeta = eventPayload.payload?.metadata || {};
       return {
         type: "success",
         nodeId: eventPayload.nodeId,
         duration: eventPayload.payload?.durationMs ?? null,
         output: eventPayload.payload?.output ?? null,
+        metadata: payloadMeta,
       };
     }
     if (eventPayload.type === "node_failed") {
@@ -408,7 +399,8 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
         metadata: { source: "apps/web" },
       };
       await createWorkflow(workflowPayload);
-      const run = await startRun(workflowId, userInput);
+      const runtimeConfig = projectId ? getProject(projectId)?.configs || {} : {};
+      const run = await startRun(workflowId, userInput, { runtimeConfig });
       setRunState((previous) => ({ ...previous, runId: run.id }));
 
       const closeStream = streamRunEvents(run.id, (eventPayload) => {
@@ -536,9 +528,7 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
       .map((id) => nodes.find((node) => node.id === id))
       .filter((node) => {
         if (!node || node.parent) return false;
-        const meta = XFLOWS_CATALOG.find(
-          (component) => component.id === node.componentId
-        );
+        const meta = getComponentMeta(node.componentId);
         return meta?.category !== "Observability";
       });
     if (!sequence.length) return undefined;
@@ -714,8 +704,6 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
             }}
             onRun={runWorkflow}
             runState={runState}
-            apiKeys={apiKeys}
-            setApiKeys={setApiKeys}
           />
         )}
       </div>

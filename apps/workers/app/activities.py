@@ -49,15 +49,33 @@ async def execute_node(
     input_value: dict[str, Any],
     run_id: str,
     trace_id: str,
+    runtime_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     component_id = node.get("componentId")
     node_id = node.get("id", "unknown")
+    runtime_config = runtime_config or {}
+
+    async def llm_chat(
+        prompt: str,
+        system_prompt: str | None,
+        model_hint: str | None,
+        temperature: float,
+    ) -> dict[str, Any]:
+        return await router.chat(
+            prompt,
+            system_prompt,
+            model_hint,
+            temperature,
+            runtime_config=runtime_config,
+        )
+
     context = NodeExecutionContext(
         run_id=run_id,
         trace_id=trace_id,
         user_input=str(input_value.get("value", "")),
-        llm_chat=router.chat,
+        llm_chat=llm_chat,
         http_request=_http_request,
+        runtime_config=runtime_config,
     )
 
     trace_ctx = TracingContext(trace_id=trace_id, run_id=run_id)
@@ -72,7 +90,10 @@ async def execute_node(
                     run_id,
                     "node_succeeded",
                     node_id=node_id,
-                    payload={"output": result.get("value")},
+                    payload={
+                        "output": result.get("value"),
+                        "metadata": {k: v for k, v in result.items() if k != "value"},
+                    },
                     trace_id=trace_id,
                 )
                 return result
