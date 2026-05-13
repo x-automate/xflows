@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xflows.dev/schemas/run-events.schema.json",
+  "title": "XFlows Run Event",
+  "type": "object",
+  "required": ["runId", "type", "timestamp"],
+  "additionalProperties": false,
+  "properties": {
+    "runId": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["run_started", "node_started", "node_succeeded", "node_failed", "run_succeeded", "run_failed"]
+    },
+    "nodeId": {
+      "type": "string"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "traceId": {
+      "type": "string"
+    }
+  }
+}

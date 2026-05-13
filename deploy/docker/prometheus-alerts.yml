@@ -1,0 +1,38 @@
+groups:
+  - name: xflows-alerts
+    rules:
+      - alert: XFlowsApiDown
+        expr: up{job="xflows-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: XFlows API is down
+          description: API metrics target has been unreachable for 2 minutes.
+
+      - alert: XFlowsWorkerDown
+        expr: up{job="xflows-worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: XFlows worker metrics endpoint is down
+          description: Worker metrics target has been unreachable for 2 minutes.
+
+      - alert: XFlowsRunCreateLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(xflows_run_create_latency_seconds_bucket[5m])) by (le)) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: P95 run create latency is high
+          description: P95 run creation latency has exceeded 2 seconds for 10 minutes.
+
+      - alert: XFlowsNodeErrorRateHigh
+        expr: sum(rate(xflows_node_executions_total{status="error"}[5m])) / clamp_min(sum(rate(xflows_node_executions_total[5m])), 1) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Node execution error rate is above 5%
+          description: Worker node error rate exceeded 5% over the last 10 minutes.

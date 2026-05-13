@@ -1,0 +1,18 @@
+/* Tweak-driven overrides */
+:root {
+  --xf-accent: #3b82f6;
+  --xf-config-accent: #c2410c;
+  --xf-node-shadow: 2px 2px 0 #111;
+  --xf-canvas-bg: #fafafa;
+}
+.canvas-host, .canvas-wrap { background: var(--xf-canvas-bg) !important; }
+.node { box-shadow: var(--xf-node-shadow); }
+.node:hover { box-shadow: var(--xf-node-shadow); }
+.node.selected { border-color: var(--xf-accent) !important; box-shadow: 2px 2px 0 var(--xf-accent) !important; }
+.edge.selected, .edge:hover { stroke: var(--xf-accent) !important; }
+.edge.config { stroke: var(--xf-config-accent) !important; }
+.port-config-out, .port-config-in { border-color: var(--xf-config-accent) !important; background: color-mix(in srgb, var(--xf-config-accent) 8%, white) !important; }
+.slot-label { color: var(--xf-config-accent) !important; }
+body.xf-no-cat .node-cat { display: none; }
+body.xf-edge-straight .edge-flow,
+body.xf-edge-straight .edge { stroke-linejoin: miter; }

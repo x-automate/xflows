@@ -1,0 +1,67 @@
+{
+  "id": "wf_support_assistant",
+  "name": "Support Assistant",
+  "description": "Takes user input and returns an assistant response.",
+  "version": 1,
+  "status": "published",
+  "nodes": [
+    {
+      "id": "node_input",
+      "componentId": "Input",
+      "x": 60,
+      "y": 140,
+      "params": {}
+    },
+    {
+      "id": "node_prompt",
+      "componentId": "PromptTemplate",
+      "x": 280,
+      "y": 140,
+      "params": {
+        "template": "Answer clearly and concisely:\\n\\n{input}",
+        "system": "You are a helpful assistant."
+      }
+    },
+    {
+      "id": "node_llm",
+      "componentId": "OpenAIChat",
+      "x": 520,
+      "y": 140,
+      "params": {
+        "model": "gpt-4o-mini",
+        "temperature": 0.3,
+        "max_tokens": 256
+      }
+    },
+    {
+      "id": "node_output",
+      "componentId": "Output",
+      "x": 760,
+      "y": 140,
+      "params": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_1",
+      "source": "node_input",
+      "target": "node_prompt"
+    },
+    {
+      "id": "edge_2",
+      "source": "node_prompt",
+      "target": "node_llm"
+    },
+    {
+      "id": "edge_3",
+      "source": "node_llm",
+      "target": "node_output"
+    }
+  ],
+  "metadata": {
+    "owner": "xflows",
+    "tags": ["assistant", "starter"]
+  },
+  "createdAt": "2026-05-07T00:00:00Z",
+  "updatedAt": "2026-05-07T00:00:00Z"
+}

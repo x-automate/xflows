@@ -1,0 +1,12 @@
+[
+  {
+    "name": "short_question",
+    "input": "What is XFlows?",
+    "expect_contains_any": ["workflow", "agent", "XFlows"]
+  },
+  {
+    "name": "routing_question",
+    "input": "Explain model fallback routing.",
+    "expect_contains_any": ["fallback", "model", "route"]
+  }
+]
