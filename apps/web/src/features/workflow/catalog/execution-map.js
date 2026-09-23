@@ -1,4 +1,4 @@
-import { XFLOWS_CATALOG } from "./catalog-meta";
+import { XFLOWS_CATALOG } from "./catalog-meta.js";
 
 export const BACKEND_EXECUTION_MAP = Object.fromEntries(
   XFLOWS_CATALOG.filter((component) => component.backendActivity)
@@ -8,9 +8,13 @@ export const BACKEND_EXECUTION_MAP = Object.fromEntries(
 export function getUnsupportedComponents(nodes) {
   const knownIds = new Set(Object.keys(BACKEND_EXECUTION_MAP));
   return nodes
-    .map((node) => node.componentId)
-    .filter(
-      (componentId) =>
-        !knownIds.has(componentId) || !BACKEND_EXECUTION_MAP[componentId]
-    );
+    .filter((node) => {
+      const componentId = node.componentId;
+      if (!knownIds.has(componentId) || !BACKEND_EXECUTION_MAP[componentId]) {
+        return true;
+      }
+      const component = XFLOWS_CATALOG.find((item) => item.id === componentId);
+      return component?.status === "planned";
+    })
+    .map((node) => node.componentId);
 }

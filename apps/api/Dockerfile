@@ -5,10 +5,11 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-COPY requirements.txt .
+COPY apps/api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app ./app
+COPY packages/xflows-engine/xflows_engine ./xflows_engine
+COPY apps/api/app ./app
 
 EXPOSE 8000
 

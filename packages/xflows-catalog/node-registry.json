@@ -1,0 +1,1185 @@
+{
+  "version": 1,
+  "categoryColors": {
+    "I/O": {
+      "fg": "#1f2937",
+      "bg": "#f1f5f9",
+      "dot": "#475569"
+    },
+    "Prompt": {
+      "fg": "#6b3aa0",
+      "bg": "#f3eafd",
+      "dot": "#8b5cf6"
+    },
+    "LLM": {
+      "fg": "#0f766e",
+      "bg": "#e6fbf6",
+      "dot": "#14b8a6"
+    },
+    "LLM-Provider": {
+      "fg": "#0f766e",
+      "bg": "#ccfbf1",
+      "dot": "#0d9488"
+    },
+    "Tool": {
+      "fg": "#9a3412",
+      "bg": "#fff1e6",
+      "dot": "#f97316"
+    },
+    "Memory": {
+      "fg": "#1e40af",
+      "bg": "#e8efff",
+      "dot": "#3b82f6"
+    },
+    "Router": {
+      "fg": "#854d0e",
+      "bg": "#fef7c8",
+      "dot": "#eab308"
+    },
+    "Control": {
+      "fg": "#312e81",
+      "bg": "#eef2ff",
+      "dot": "#6366f1"
+    },
+    "Parser": {
+      "fg": "#155e75",
+      "bg": "#e3f6fb",
+      "dot": "#06b6d4"
+    },
+    "Agent": {
+      "fg": "#9f1239",
+      "bg": "#ffe9ee",
+      "dot": "#e11d48"
+    },
+    "Format": {
+      "fg": "#475569",
+      "bg": "#eef2f7",
+      "dot": "#64748b"
+    },
+    "Observability": {
+      "fg": "#7c2d12",
+      "bg": "#fef3e2",
+      "dot": "#c2410c"
+    },
+    "Trigger": {
+      "fg": "#1d4ed8",
+      "bg": "#e0edff",
+      "dot": "#2563eb"
+    },
+    "XWS": {
+      "fg": "#3f3f46",
+      "bg": "#faf5ff",
+      "dot": "#a855f7"
+    }
+  },
+  "components": [
+    {
+      "id": "Input",
+      "name": "Input",
+      "category": "I/O",
+      "kind": "input",
+      "icon": "input",
+      "desc": "User input - entry point of the workflow.",
+      "status": "working",
+      "params": [],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "Output",
+      "name": "Output",
+      "category": "I/O",
+      "kind": "output",
+      "icon": "output",
+      "desc": "Final response shown to the user.",
+      "status": "working",
+      "params": [],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "PromptTemplate",
+      "name": "Prompt",
+      "category": "Prompt",
+      "kind": "transform",
+      "icon": "prompt",
+      "desc": "Render a prompt by substituting {input} with the upstream value.",
+      "status": "working",
+      "params": [
+        {
+          "name": "template",
+          "type": "textarea",
+          "default": "Answer concisely:\n\n{input}"
+        },
+        {
+          "name": "system",
+          "type": "textarea",
+          "default": "You are a helpful assistant."
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "LLM",
+      "name": "LLM",
+      "category": "LLM",
+      "kind": "container",
+      "icon": "agent",
+      "desc": "LLM block - drop a provider inside it.",
+      "status": "working",
+      "accepts": [
+        "LLM-Provider"
+      ],
+      "configs": [
+        {
+          "name": "tracer",
+          "label": "tracer",
+          "accepts": [
+            "Observability"
+          ]
+        },
+        {
+          "name": "memory",
+          "label": "memory",
+          "accepts": [
+            "Memory"
+          ]
+        },
+        {
+          "name": "tools",
+          "label": "tools",
+          "accepts": [
+            "Tool"
+          ]
+        }
+      ],
+      "params": [],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "OpenAIChat",
+      "name": "OpenAI",
+      "category": "LLM-Provider",
+      "kind": "provider",
+      "icon": "openai",
+      "requiresContainer": "LLM",
+      "desc": "Call OpenAI chat model through backend routing.",
+      "status": "working",
+      "params": [
+        {
+          "name": "model",
+          "type": "select",
+          "options": [
+            "gpt-4o-mini",
+            "gpt-4o",
+            "gpt-4-turbo"
+          ],
+          "default": "gpt-4o-mini"
+        },
+        {
+          "name": "temperature",
+          "type": "number",
+          "default": 0.7,
+          "step": 0.1
+        },
+        {
+          "name": "max_tokens",
+          "type": "number",
+          "default": 512
+        },
+        {
+          "name": "outputSchema",
+          "type": "textarea",
+          "default": ""
+        },
+        {
+          "name": "strictSchema",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "maxRepairAttempts",
+          "type": "number",
+          "default": 1
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "AnthropicChat",
+      "name": "Claude",
+      "category": "LLM-Provider",
+      "kind": "provider",
+      "icon": "anthropic",
+      "requiresContainer": "LLM",
+      "desc": "Call Anthropic model through backend routing.",
+      "status": "working",
+      "params": [
+        {
+          "name": "model",
+          "type": "select",
+          "options": [
+            "claude-haiku-4-5",
+            "claude-sonnet-4-5",
+            "claude-opus-4"
+          ],
+          "default": "claude-haiku-4-5"
+        },
+        {
+          "name": "temperature",
+          "type": "number",
+          "default": 0.7,
+          "step": 0.1
+        },
+        {
+          "name": "max_tokens",
+          "type": "number",
+          "default": 1024
+        },
+        {
+          "name": "outputSchema",
+          "type": "textarea",
+          "default": ""
+        },
+        {
+          "name": "strictSchema",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "maxRepairAttempts",
+          "type": "number",
+          "default": 1
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "LiteLLM",
+      "name": "LiteLLM",
+      "category": "LLM-Provider",
+      "kind": "provider",
+      "icon": "litellm",
+      "requiresContainer": "LLM",
+      "desc": "Route model calls via LiteLLM provider gateway.",
+      "status": "working",
+      "params": [
+        {
+          "name": "model",
+          "type": "text",
+          "default": "openai/gpt-4o-mini"
+        },
+        {
+          "name": "temperature",
+          "type": "number",
+          "default": 0.2,
+          "step": 0.1
+        },
+        {
+          "name": "apiBase",
+          "type": "text",
+          "default": "http://litellm:4000"
+        },
+        {
+          "name": "max_tokens",
+          "type": "number",
+          "default": 512
+        },
+        {
+          "name": "outputSchema",
+          "type": "textarea",
+          "default": ""
+        },
+        {
+          "name": "strictSchema",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "maxRepairAttempts",
+          "type": "number",
+          "default": 1
+        }
+      ],
+      "projectConfigs": [
+        {
+          "key": "litellmApiKey",
+          "label": "LiteLLM API key",
+          "type": "password",
+          "required": true,
+          "placeholder": "sk-...",
+          "help": "Used to authenticate requests from XFlows to LiteLLM."
+        },
+        {
+          "key": "litellmBaseUrl",
+          "label": "LiteLLM base URL",
+          "type": "text",
+          "required": true,
+          "default": "http://localhost:4000",
+          "help": "Base URL for LiteLLM (without /v1/chat/completions)."
+        },
+        {
+          "key": "litellmModel",
+          "label": "Default LiteLLM model",
+          "type": "text",
+          "required": true,
+          "default": "gpt-4o-mini",
+          "help": "Use the model alias exposed by your LiteLLM instance."
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "HttpRequest",
+      "name": "HTTP",
+      "category": "Tool",
+      "kind": "tool",
+      "icon": "http",
+      "desc": "Make an HTTP GET/POST request.",
+      "status": "partial",
+      "statusNote": "Sends method + URL only; headers, body, and auth are not supported yet (XF-09).",
+      "params": [
+        {
+          "name": "method",
+          "type": "select",
+          "options": [
+            "GET",
+            "POST"
+          ],
+          "default": "GET"
+        },
+        {
+          "name": "url",
+          "type": "text",
+          "default": "https://api.example.com/data"
+        },
+        {
+          "name": "body_uses_input",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "ApiCaller",
+      "name": "API Caller",
+      "category": "Tool",
+      "kind": "tool",
+      "icon": "http",
+      "desc": "Call an external API endpoint.",
+      "status": "working",
+      "params": [
+        {
+          "name": "method",
+          "type": "select",
+          "options": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ],
+          "default": "GET"
+        },
+        {
+          "name": "url",
+          "type": "text",
+          "default": "https://api.example.com/data"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "Webhook",
+      "name": "Webhook",
+      "category": "Trigger",
+      "kind": "input",
+      "icon": "hook",
+      "desc": "Trigger workflow execution from an external webhook.",
+      "status": "planned",
+      "statusNote": "No ingestion endpoint exists yet; planned for Wave 4 (XU-8).",
+      "params": [
+        {
+          "name": "path",
+          "type": "text",
+          "default": "/webhook"
+        },
+        {
+          "name": "method",
+          "type": "select",
+          "options": [
+            "POST",
+            "PUT"
+          ],
+          "default": "POST"
+        },
+        {
+          "name": "secretHeader",
+          "type": "text",
+          "default": "x-webhook-secret"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "WebSearch",
+      "name": "Search",
+      "category": "Tool",
+      "kind": "tool",
+      "icon": "search",
+      "desc": "Search tool wrapper.",
+      "status": "planned",
+      "statusNote": "Executor not implemented yet.",
+      "params": [
+        {
+          "name": "top_k",
+          "type": "number",
+          "default": 3
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "CodeExec",
+      "name": "Code",
+      "category": "Tool",
+      "kind": "tool",
+      "icon": "code",
+      "desc": "Execute code in backend sandbox.",
+      "status": "planned",
+      "statusNote": "Executor not implemented yet.",
+      "params": [
+        {
+          "name": "code",
+          "type": "textarea",
+          "default": "return input.toUpperCase();"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "VectorStore",
+      "name": "Vector DB",
+      "category": "Memory",
+      "kind": "aux",
+      "icon": "vector",
+      "desc": "Vector retrieval - attach to LLM as memory.",
+      "status": "planned",
+      "statusNote": "Executor not implemented yet.",
+      "params": [
+        {
+          "name": "collection",
+          "type": "text",
+          "default": "docs"
+        },
+        {
+          "name": "top_k",
+          "type": "number",
+          "default": 3
+        },
+        {
+          "name": "query",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "Summarizer",
+      "name": "Summarize",
+      "category": "Memory",
+      "kind": "transform",
+      "icon": "sum",
+      "desc": "Condense input by max chars.",
+      "status": "planned",
+      "statusNote": "Executor not implemented yet.",
+      "params": [
+        {
+          "name": "max_chars",
+          "type": "number",
+          "default": 200
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "IfElse",
+      "name": "If/Else",
+      "category": "Router",
+      "kind": "router",
+      "icon": "branch",
+      "desc": "Contains-check router with warn/fail modes; combine with edge when-predicates.",
+      "status": "working",
+      "params": [
+        {
+          "name": "contains",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "mode",
+          "type": "select",
+          "options": [
+            "warn",
+            "fail"
+          ],
+          "default": "warn"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "Switch",
+      "name": "Switch",
+      "category": "Router",
+      "kind": "router",
+      "icon": "branch",
+      "desc": "Route by first matching rule; pair each outgoing edge with a when predicate like route == 'name'.",
+      "status": "working",
+      "params": [
+        {
+          "name": "routes",
+          "type": "textarea",
+          "default": "[{\"name\":\"routeA\",\"contains\":\"A\"}]"
+        },
+        {
+          "name": "field",
+          "type": "text",
+          "default": "value"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "Wait",
+      "name": "Wait",
+      "category": "Control",
+      "kind": "transform",
+      "icon": "trace",
+      "desc": "Pause the workflow for N seconds (durable timer in the Temporal workflow).",
+      "status": "working",
+      "params": [
+        {
+          "name": "seconds",
+          "type": "number",
+          "default": 1
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "Approval",
+      "name": "Approval",
+      "category": "Control",
+      "kind": "transform",
+      "icon": "branch",
+      "desc": "HITL review gate: parks the run on approve/reject/request-changes signals or times out (durable signal wait).",
+      "status": "working",
+      "params": [
+        {
+          "name": "summary",
+          "type": "textarea",
+          "default": ""
+        },
+        {
+          "name": "signalTimeoutS",
+          "type": "number",
+          "default": 259200
+        },
+        {
+          "name": "notifyChannel",
+          "type": "text",
+          "default": "console"
+        },
+        {
+          "name": "notifyDeepLink",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "LoopOverItems",
+      "name": "Loop Over Items",
+      "category": "Control",
+      "kind": "transform",
+      "icon": "sum",
+      "desc": "Process a list in batches through a branch.",
+      "status": "planned",
+      "statusNote": "Requires iterative branch execution; arrives with the Wave 6 items work.",
+      "params": [
+        {
+          "name": "batchSize",
+          "type": "number",
+          "default": 1
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "JsonParser",
+      "name": "JSON",
+      "category": "Parser",
+      "kind": "transform",
+      "icon": "json",
+      "desc": "Parse upstream text as JSON.",
+      "status": "planned",
+      "statusNote": "Executor not implemented yet.",
+      "params": [
+        {
+          "name": "extract_path",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "RegexExtract",
+      "name": "Regex",
+      "category": "Parser",
+      "kind": "transform",
+      "icon": "regex",
+      "desc": "Extract first regex match group.",
+      "status": "planned",
+      "statusNote": "Executor not implemented yet.",
+      "params": [
+        {
+          "name": "pattern",
+          "type": "text",
+          "default": "\\d+"
+        },
+        {
+          "name": "flags",
+          "type": "text",
+          "default": "i"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "ReActAgent",
+      "name": "ReAct",
+      "category": "Agent",
+      "kind": "llm",
+      "icon": "agent",
+      "desc": "Agent loop through backend orchestration.",
+      "status": "planned",
+      "statusNote": "Real agent loop arrives in Wave 3 (XU-3); currently a single chat turn.",
+      "params": [
+        {
+          "name": "max_steps",
+          "type": "number",
+          "default": 3
+        },
+        {
+          "name": "tools",
+          "type": "text",
+          "default": "search,calculator"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "Markdown",
+      "name": "Markdown",
+      "category": "Format",
+      "kind": "transform",
+      "icon": "markdown",
+      "desc": "Wrap content in markdown.",
+      "status": "planned",
+      "statusNote": "Executor not implemented yet.",
+      "params": [
+        {
+          "name": "wrap",
+          "type": "select",
+          "options": [
+            "as-is",
+            "codeblock",
+            "quote",
+            "bullets"
+          ],
+          "default": "as-is"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "Tracer",
+      "name": "Tracer",
+      "category": "Observability",
+      "kind": "aux",
+      "icon": "trace",
+      "desc": "Attach to LLM tracer config.",
+      "status": "planned",
+      "statusNote": "Executor not implemented yet.",
+      "params": [
+        {
+          "name": "level",
+          "type": "select",
+          "options": [
+            "info",
+            "debug",
+            "verbose"
+          ],
+          "default": "info"
+        },
+        {
+          "name": "destination",
+          "type": "select",
+          "options": [
+            "console",
+            "trace-panel",
+            "both"
+          ],
+          "default": "both"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "LangfuseTracer",
+      "name": "Langfuse",
+      "category": "Observability",
+      "kind": "aux",
+      "desc": "Attach Langfuse tracing config to the run.",
+      "status": "partial",
+      "statusNote": "Run-level tracing is active via worker env config; node params are not applied yet.",
+      "params": [
+        {
+          "name": "host",
+          "type": "text",
+          "default": "https://cloud.langfuse.com"
+        },
+        {
+          "name": "publicKey",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "tags",
+          "type": "text",
+          "default": "prod,web"
+        }
+      ],
+      "projectConfigs": [
+        {
+          "key": "langfuseHost",
+          "label": "Langfuse host",
+          "type": "text",
+          "required": true,
+          "default": "https://cloud.langfuse.com"
+        },
+        {
+          "key": "langfusePublicKey",
+          "label": "Langfuse public key",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "langfuseSecretKey",
+          "label": "Langfuse secret key",
+          "type": "password",
+          "required": true
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "LangsmithTracer",
+      "name": "LangSmith",
+      "category": "Observability",
+      "kind": "aux",
+      "icon": "trace",
+      "desc": "Attach LangSmith tracing config to the run.",
+      "status": "planned",
+      "statusNote": "Exporter implementation arrives in Wave 6.",
+      "params": [
+        {
+          "name": "endpoint",
+          "type": "text",
+          "default": "https://api.smith.langchain.com"
+        },
+        {
+          "name": "project",
+          "type": "text",
+          "default": "xflows"
+        },
+        {
+          "name": "tags",
+          "type": "text",
+          "default": "prod,web"
+        }
+      ],
+      "projectConfigs": [
+        {
+          "key": "langsmithEndpoint",
+          "label": "LangSmith endpoint",
+          "type": "text",
+          "required": true,
+          "default": "https://api.smith.langchain.com"
+        },
+        {
+          "key": "langsmithProject",
+          "label": "LangSmith project",
+          "type": "text",
+          "required": true,
+          "default": "xflows"
+        },
+        {
+          "key": "langsmithApiKey",
+          "label": "LangSmith API key",
+          "type": "password",
+          "required": true
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "Guardrail",
+      "name": "Guardrail",
+      "category": "Observability",
+      "kind": "aux",
+      "icon": "guard",
+      "desc": "Guard checks attached to LLM tracing.",
+      "status": "planned",
+      "statusNote": "Executor not implemented yet.",
+      "params": [
+        {
+          "name": "forbidden",
+          "type": "text",
+          "default": "password,secret"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "XWSS3",
+      "name": "XWS S3",
+      "category": "XWS",
+      "kind": "tool",
+      "icon": "http",
+      "desc": "SigV4-signed S3 artifact storage via xws-gateway (retry 5x).",
+      "status": "working",
+      "params": [
+        {
+          "name": "operation",
+          "type": "select",
+          "options": [
+            "put",
+            "get",
+            "list_versions"
+          ],
+          "default": "put"
+        },
+        {
+          "name": "key",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "bucket",
+          "type": "text",
+          "default": "apigen-artifacts"
+        },
+        {
+          "name": "toolClass",
+          "type": "text",
+          "default": "s3"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "XWSLambdaInvoke",
+      "name": "XWS Lambda",
+      "category": "XWS",
+      "kind": "tool",
+      "icon": "code",
+      "desc": "Invoke a Lambda via xws-gateway with bundle-hash idempotency key.",
+      "status": "working",
+      "params": [
+        {
+          "name": "functionName",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "bundleHash",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "toolClass",
+          "type": "text",
+          "default": "lambda"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "XWSIAMEvaluate",
+      "name": "XWS IAM",
+      "category": "XWS",
+      "kind": "tool",
+      "icon": "guard",
+      "desc": "Evaluate an IAM policy decision via iam-svc (fails closed on deny).",
+      "status": "working",
+      "params": [
+        {
+          "name": "principal",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "resource",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "toolClass",
+          "type": "text",
+          "default": "iam"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "XWSRelayNotify",
+      "name": "XWS Relay",
+      "category": "XWS",
+      "kind": "tool",
+      "icon": "hook",
+      "desc": "Send approval notifications via relay-svc (best-effort; failure parks the gate).",
+      "status": "working",
+      "params": [
+        {
+          "name": "message",
+          "type": "textarea",
+          "default": ""
+        },
+        {
+          "name": "deepLink",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "channel",
+          "type": "text",
+          "default": "console"
+        },
+        {
+          "name": "toolClass",
+          "type": "text",
+          "default": "relay"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "XWSGatewayLLM",
+      "name": "XWS Gateway LLM",
+      "category": "XWS",
+      "kind": "tool",
+      "icon": "agent",
+      "desc": "Structured LLM outputs routed through the SigV4-signed xws-gateway (/v1/gateway/complete); optional outputSchema re-validated locally.",
+      "status": "working",
+      "params": [
+        {
+          "name": "prompt",
+          "type": "textarea",
+          "default": ""
+        },
+        {
+          "name": "system",
+          "type": "textarea",
+          "default": ""
+        },
+        {
+          "name": "model",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "temperature",
+          "type": "number",
+          "default": 0.7
+        },
+        {
+          "name": "maxTokens",
+          "type": "number",
+          "default": 1024
+        },
+        {
+          "name": "outputSchema",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "toolClass",
+          "type": "text",
+          "default": "llm"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "XWSDmsIntrospect",
+      "name": "XWS DMS",
+      "category": "XWS",
+      "kind": "tool",
+      "icon": "json",
+      "desc": "Read-only database introspection via dms-svc.",
+      "status": "planned",
+      "statusNote": "Registered but inert in Wave 3 v1; read-only toolClass (dms-ro).",
+      "params": [
+        {
+          "name": "toolClass",
+          "type": "text",
+          "default": "dms-ro"
+        },
+        {
+          "name": "readOnly",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "XWSApigwRegister",
+      "name": "XWS API GW",
+      "category": "XWS",
+      "kind": "tool",
+      "icon": "http",
+      "desc": "Register API gateway routes / issue keys / roll back deployments.",
+      "status": "planned",
+      "statusNote": "Registered but inert in Wave 3 v1; arrives with the APIGen pipeline work.",
+      "params": [
+        {
+          "name": "toolClass",
+          "type": "text",
+          "default": "apigw"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "XWSAudit",
+      "name": "XWS Audit",
+      "category": "XWS",
+      "kind": "tool",
+      "icon": "trace",
+      "desc": "Append an immutable audit event via audit-svc.",
+      "status": "planned",
+      "statusNote": "Registered but inert in Wave 3 v1; arrives with the audit backbone service.",
+      "params": [
+        {
+          "name": "toolClass",
+          "type": "text",
+          "default": "audit"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "AgentLoop",
+      "name": "Agent Loop",
+      "category": "Agent",
+      "kind": "llm",
+      "icon": "agent",
+      "desc": "Durable tool-using agent loop over the XWS tool allowlist, with iteration, token, and timeout bounds.",
+      "status": "working",
+      "params": [
+        {
+          "name": "maxIterations",
+          "type": "number",
+          "default": 5
+        },
+        {
+          "name": "tokenCap",
+          "type": "number",
+          "default": 20000
+        },
+        {
+          "name": "timeoutS",
+          "type": "number",
+          "default": 60
+        },
+        {
+          "name": "allowlist",
+          "type": "text",
+          "default": "s3,lambda,iam,relay"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "SchemaValidate",
+      "name": "Schema Validate",
+      "category": "Control",
+      "kind": "transform",
+      "icon": "json",
+      "desc": "Deterministic JSON-Schema validation of the upstream payload; fails the node on any violation (no LLM).",
+      "status": "working",
+      "params": [
+        {
+          "name": "schema",
+          "type": "textarea",
+          "default": ""
+        },
+        {
+          "name": "outputSchema",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "Codegen",
+      "name": "Codegen",
+      "category": "Control",
+      "kind": "transform",
+      "icon": "code",
+      "desc": "Deterministic code generation from an OpenAPI-style spec into a code bundle (files + sha256 hash); no LLM.",
+      "status": "working",
+      "params": [
+        {
+          "name": "template",
+          "type": "text",
+          "default": "fastapi-arc1@1.4.0"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "SubWorkflow",
+      "name": "Sub Workflow",
+      "category": "Control",
+      "kind": "transform",
+      "icon": "branch",
+      "desc": "Run another stored or APIGen workflow as a child Temporal workflow and return its output.",
+      "status": "working",
+      "params": [
+        {
+          "name": "workflowId",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "runtimeConfig",
+          "type": "textarea",
+          "default": ""
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    }
+  ]
+}

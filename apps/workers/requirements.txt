@@ -4,3 +4,4 @@ langfuse==2.53.9
 pydantic==2.9.2
 prometheus-client==0.20.0
 pydantic_settings
+jsonschema>=4.21,<5

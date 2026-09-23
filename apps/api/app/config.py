@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     temporal_task_queue: str = "xflows-workflows"
     temporal_namespace: str = "default"
     internal_api_token: str | None = None
+    # Rotation set (XF-12): any of these tokens is accepted for worker->API
+    # callbacks; revoke by removing from the list, add the new one first.
+    internal_api_tokens: str = ""
     litellm_base_url: str = "http://litellm:4000"
     litellm_api_key: str | None = None
     litellm_master_key: str | None = None
@@ -23,9 +26,24 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = 30
     idempotency_ttl_seconds: int = 86400
 
+    # AuthN/AuthZ (XU-7 / XF-04): "off" is dev-only; "token" requires
+    # Authorization: Bearer <token> and resolves a role + project scope.
+    auth_mode: str = "off"
+    # Entries: name|token|role|projects (projects: "*" or comma ids)
+    api_callers: str = ""
+
+    # Trigger execution (XU-8): scheduler tick interval for time triggers.
+    trigger_scheduler_interval_s: int = 30
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def internal_token_set(self) -> set[str]:
+        tokens = {self.internal_api_token} if self.internal_api_token else set()
+        tokens |= {t.strip() for t in self.internal_api_tokens.split(",") if t.strip()}
+        return {t for t in tokens if t}
 
 
 settings = Settings()

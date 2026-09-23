@@ -28,6 +28,8 @@ function Canvas({
   onConnect,
   onDelete,
   onOpenParams,
+  onUpdateEdge,
+  onDeleteEdge,
 }) {
   const wrapRef = useRef(null);
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
@@ -115,6 +117,11 @@ function Canvas({
         if (target && target.dataset.nodeId !== pendingWire.from) {
           onConnect(pendingWire.from, target.dataset.nodeId, "data");
         }
+      } else if (pendingWire.kind === "error") {
+        const target = el?.closest?.("[data-port='in']");
+        if (target && target.dataset.nodeId !== pendingWire.from) {
+          onConnect(pendingWire.from, target.dataset.nodeId, "error");
+        }
       } else if (pendingWire.kind === "config") {
         const target = el?.closest?.("[data-port='config-in']");
         if (target && target.dataset.nodeId !== pendingWire.from) {
@@ -152,6 +159,11 @@ function Canvas({
     };
   };
 
+  const errorOutPortPos = (node) => {
+    const size = sizeFor(metaOf(node));
+    return { x: node.x + size.w + PORT_OVERHANG - PORT_SIZE / 2, y: node.y + size.h / 2 + 16 };
+  };
+
   const configPortPos = (node, slotIdx, totalSlots) => {
     const size = sizeFor(metaOf(node));
     const step = size.w / (totalSlots + 1);
@@ -178,6 +190,20 @@ function Canvas({
     setPendingWire({
       from: nodeId,
       kind: "data",
+      sx: p.x,
+      sy: p.y,
+      tx: p.x,
+      ty: p.y,
+    });
+  };
+
+  const startErrorWire = (event, nodeId) => {
+    event.stopPropagation();
+    const node = nodeById[nodeId];
+    const p = errorOutPortPos(node);
+    setPendingWire({
+      from: nodeId,
+      kind: "error",
       sx: p.x,
       sy: p.y,
       tx: p.x,
@@ -232,12 +258,16 @@ function Canvas({
             <marker id="wf-arrow-config" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
               <path d="M 0 0 L 8 5 L 0 10 z" fill="#c2410c" />
             </marker>
+            <marker id="wf-arrow-error" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+              <path d="M 0 0 L 8 5 L 0 10 z" fill="#dc2626" />
+            </marker>
           </defs>
           {edges.map((edge) => {
             const sourceNode = nodeById[edge.source];
             const targetNode = nodeById[edge.target];
             if (!sourceNode || !targetNode) return null;
             const isConfig = edge.kind === "config";
+            const isError = edge.kind === "error";
             let sourcePort;
             let targetPort;
             if (isConfig) {
@@ -249,6 +279,9 @@ function Canvas({
               );
               sourcePort = configOutPortPos(sourceNode);
               targetPort = configPortPos(targetNode, idx, slots.length || 1);
+            } else if (isError) {
+              sourcePort = errorOutPortPos(sourceNode);
+              targetPort = dataPortPos(targetNode, "in");
             } else {
               sourcePort = dataPortPos(sourceNode, "out");
               targetPort = dataPortPos(targetNode, "in");
@@ -257,7 +290,7 @@ function Canvas({
               <g key={edge.id}>
                 <path
                   d={edgePath(sourcePort, targetPort, isConfig)}
-                  className={`wf-edge${isConfig ? " config" : ""}${
+                  className={`wf-edge${isConfig ? " config" : ""}${isError ? " error" : ""}${
                     selected === edge.id ? " selected" : ""
                   }${edge.activeEdge ? " active" : ""}`}
                   fill="none"
@@ -265,7 +298,7 @@ function Canvas({
                     event.stopPropagation();
                     onSelect(edge.id);
                   }}
-                  markerEnd={isConfig ? "url(#wf-arrow-config)" : "url(#wf-arrow)"}
+                  markerEnd={isConfig ? "url(#wf-arrow-config)" : isError ? "url(#wf-arrow-error)" : "url(#wf-arrow)"}
                 />
                 {edge.activeEdge && (
                   <path
@@ -285,7 +318,13 @@ function Canvas({
                 pendingWire.kind === "config"
               )}
               fill="none"
-              stroke={pendingWire.kind === "config" ? "#c2410c" : "#3b82f6"}
+              stroke={
+                pendingWire.kind === "config"
+                  ? "#c2410c"
+                  : pendingWire.kind === "error"
+                    ? "#dc2626"
+                    : "#3b82f6"
+              }
               strokeWidth="2"
               strokeDasharray="5 4"
             />
@@ -436,6 +475,15 @@ function Canvas({
                     onMouseDown={(event) => startDataWire(event, node.id)}
                   />
                 )}
+                {meta.kind !== "output" && meta.kind !== "input" && (
+                  <div
+                    className="wf-port wf-port-error-out"
+                    data-port="error-out"
+                    data-node-id={node.id}
+                    onMouseDown={(event) => startErrorWire(event, node.id)}
+                    title="Error output - connect to a node that should run when this node fails"
+                  />
+                )}
                 {(meta.category === "Observability" ||
                   meta.category === "Memory" ||
                   meta.category === "Tool") && (
@@ -485,6 +533,54 @@ function Canvas({
         </button>
         <span className="wf-zoom">{Math.round(view.k * 100)}%</span>
       </div>
+
+      {(() => {
+        const editingEdge = edges.find((edge) => edge.id === selected);
+        if (!editingEdge || (editingEdge.kind !== "data" && editingEdge.kind !== "error")) {
+          return null;
+        }
+        return (
+          <div className="wf-edge-editor" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="wf-edge-editor-title">
+              Edge · {editingEdge.kind || "data"}
+            </div>
+            <label className="wf-edge-editor-field">
+              <span>Kind</span>
+              <select
+                value={editingEdge.kind || "data"}
+                onChange={(event) => onUpdateEdge?.(editingEdge.id, { kind: event.target.value })}
+              >
+                <option value="data">data</option>
+                <option value="error">error</option>
+              </select>
+            </label>
+            <label className="wf-edge-editor-field">
+              <span>When</span>
+              <input
+                value={editingEdge.when || ""}
+                placeholder="e.g. value == 'approved'"
+                onChange={(event) => onUpdateEdge?.(editingEdge.id, { when: event.target.value })}
+              />
+            </label>
+            <div className="wf-edge-editor-actions">
+              <button
+                onClick={() => {
+                  onDeleteEdge?.(editingEdge.id);
+                }}
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => {
+                  onSelect(null);
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

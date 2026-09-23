@@ -40,9 +40,21 @@ CREATE TABLE IF NOT EXISTS workflows (
     description TEXT NULL,
     version INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL DEFAULT 'draft',
+    durable BOOLEAN NOT NULL DEFAULT FALSE,
     definition JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
+);
+
+ALTER TABLE workflows ADD COLUMN IF NOT EXISTS durable BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS project_secrets (
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    value TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (project_id, name)
 );
 
 CREATE TABLE IF NOT EXISTS triggers (
@@ -78,8 +90,11 @@ CREATE TABLE IF NOT EXISTS run_events (
     event_type TEXT NOT NULL,
     payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     trace_id TEXT NULL,
+    event_key TEXT NULL,
     occurred_at TIMESTAMPTZ NOT NULL
 );
+
+ALTER TABLE run_events ADD COLUMN IF NOT EXISTS event_key TEXT NULL;
 
 CREATE TABLE IF NOT EXISTS idempotency_keys (
     workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
@@ -97,6 +112,7 @@ CREATE INDEX IF NOT EXISTS idx_runs_project_id ON runs(project_id);
 CREATE INDEX IF NOT EXISTS idx_runs_workflow_id ON runs(workflow_id);
 CREATE INDEX IF NOT EXISTS idx_runs_started_created ON runs(COALESCE(started_at, created_at) DESC);
 CREATE INDEX IF NOT EXISTS idx_run_events_run_id_id ON run_events(run_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_run_events_run_event_key ON run_events (run_id, event_key) WHERE event_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_idempotency_expiry ON idempotency_keys(expires_at);
 """
 

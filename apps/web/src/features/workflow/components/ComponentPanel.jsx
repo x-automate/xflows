@@ -1,7 +1,9 @@
 import {
   CATEGORY_COLORS,
+  STATUS_META,
   XFLOWS_CATALOG,
   XFLOWS_ICONS,
+  isPlaceable,
 } from "../catalog/catalog-meta";
 
 function ComponentPanel({ onAddNode, query, setQuery }) {
@@ -31,36 +33,51 @@ function ComponentPanel({ onAddNode, query, setQuery }) {
                 <span>{category}</span>
                 <span className="wf-cp-cat-count">{items.length}</span>
               </div>
-              {items.map((component) => (
-                <div
-                  className="wf-cp-item"
-                  key={component.id}
-                  draggable
-                  onDragStart={(event) => {
-                    event.dataTransfer.setData("component-id", component.id);
-                    event.dataTransfer.effectAllowed = "copy";
-                  }}
-                  onDoubleClick={() => onAddNode(component.id)}
-                  title={component.desc}
-                  style={{ borderLeftColor: color.dot }}
-                >
+              {items.map((component) => {
+                const placeable = isPlaceable(component);
+                const status = STATUS_META[component.status] || STATUS_META.planned;
+                const itemClasses = `wf-cp-item${placeable ? "" : " wf-cp-item-planned"}`;
+                return (
                   <div
-                    className="wf-cp-item-icon"
-                    style={{
-                      background: color.bg,
-                      color: color.fg,
-                      borderColor: color.dot,
+                    className={itemClasses}
+                    key={component.id}
+                    draggable={placeable}
+                    onDragStart={(event) => {
+                      if (!placeable) {
+                        event.preventDefault();
+                        return;
+                      }
+                      event.dataTransfer.setData("component-id", component.id);
+                      event.dataTransfer.effectAllowed = "copy";
                     }}
-                    dangerouslySetInnerHTML={{
-                      __html: XFLOWS_ICONS[component.icon] || "",
+                    onDoubleClick={() => {
+                      if (!placeable) return;
+                      onAddNode(component.id);
                     }}
-                  />
-                  <div className="wf-cp-item-body">
-                  <div className="wf-cp-item-name">{component.name}</div>
-                  <div className="wf-cp-item-desc">{component.desc}</div>
+                    title={placeable ? component.desc : `${component.desc} — ${component.statusNote || "not implemented yet"}`}
+                    style={{ borderLeftColor: color.dot }}
+                  >
+                    <div
+                      className="wf-cp-item-icon"
+                      style={{
+                        background: color.bg,
+                        color: color.fg,
+                        borderColor: color.dot,
+                      }}
+                      dangerouslySetInnerHTML={{
+                        __html: XFLOWS_ICONS[component.icon] || "",
+                      }}
+                    />
+                    <div className="wf-cp-item-body">
+                      <div className="wf-cp-item-name">
+                        {component.name}
+                        <span className={`wf-cp-status ${status.className}`}>{status.label}</span>
+                      </div>
+                      <div className="wf-cp-item-desc">{placeable ? component.desc : component.statusNote || component.desc}</div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           );
         })}

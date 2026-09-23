@@ -10,6 +10,9 @@ class WorkflowNode(BaseModel):
     y: float | None = None
     parent: str | None = None
     params: dict[str, Any] = Field(default_factory=dict)
+    retry: dict[str, Any] | None = None
+    timeoutS: float | None = None
+    onError: str | None = None
 
 
 class WorkflowEdge(BaseModel):
@@ -18,6 +21,7 @@ class WorkflowEdge(BaseModel):
     target: str
     kind: str | None = None
     slot: str | None = None
+    when: str | None = None
 
 
 class WorkflowDefinition(BaseModel):

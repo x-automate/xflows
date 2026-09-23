@@ -19,6 +19,7 @@ class WorkflowEdge(BaseModel):
     target: str
     kind: str | None = None
     slot: str | None = None
+    when: str | None = None
 
 
 class WorkflowCreateRequest(BaseModel):
@@ -28,6 +29,7 @@ class WorkflowCreateRequest(BaseModel):
     nodes: list[WorkflowNode]
     edges: list[WorkflowEdge]
     metadata: dict[str, Any] = Field(default_factory=dict)
+    durable: bool = False
 
 
 class WorkflowRecord(BaseModel):
@@ -36,6 +38,7 @@ class WorkflowRecord(BaseModel):
     description: str | None = None
     version: int
     status: Literal["draft", "published", "archived"]
+    durable: bool = False
     nodes: list[WorkflowNode]
     edges: list[WorkflowEdge]
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -54,7 +57,16 @@ class RunRecord(BaseModel):
     projectId: str | None = None
     workflowId: str
     workflowVersion: int
-    status: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+    status: Literal[
+        "queued",
+        "running",
+        "awaiting_review",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "rejected",
+        "escalated",
+    ]
     input: str
     output: str | None = None
     error: str | None = None
@@ -72,6 +84,10 @@ class RunEvent(BaseModel):
         "node_started",
         "node_succeeded",
         "node_failed",
+        "node_skipped",
+        "node_routed_to_error",
+        "run_awaiting_review",
+        "signal_received",
         "run_succeeded",
         "run_failed",
     ]
@@ -79,6 +95,7 @@ class RunEvent(BaseModel):
     nodeId: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
     traceId: str | None = None
+    eventKey: str | None = None
 
 
 class ProjectCreateRequest(BaseModel):
@@ -151,12 +168,17 @@ class InternalRunEventRequest(BaseModel):
         "node_started",
         "node_succeeded",
         "node_failed",
+        "node_skipped",
+        "node_routed_to_error",
+        "run_awaiting_review",
+        "signal_received",
         "run_succeeded",
         "run_failed",
     ]
     nodeId: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
     traceId: str | None = None
+    eventKey: str | None = None
 
 
 class UserCreateRequest(BaseModel):
@@ -171,4 +193,20 @@ class UserRecord(BaseModel):
     name: str
     authProvider: str
     createdAt: datetime
+    updatedAt: datetime
+
+
+class ApprovalDecisionRequest(BaseModel):
+    reviewer: str | None = None
+    comment: str | None = None
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProjectSecretPutRequest(BaseModel):
+    name: str
+    value: str
+
+
+class ProjectSecretRecord(BaseModel):
+    name: str
     updatedAt: datetime

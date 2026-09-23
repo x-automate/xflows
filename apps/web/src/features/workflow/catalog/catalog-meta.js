@@ -1,4 +1,4 @@
-import nodeRegistry from "./node-registry.json";
+import nodeRegistry from "@xflows-catalog/node-registry.json" with { type: "json" };
 
 export const XFLOWS_ICONS = {
   input: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h12"/><path d="M12 8l4 4-4 4"/><circle cx="20" cy="12" r="1.5" fill="currentColor"/></svg>',
@@ -24,6 +24,16 @@ export const XFLOWS_ICONS = {
 
 export const XFLOWS_CATALOG = nodeRegistry.components;
 export const CATEGORY_COLORS = nodeRegistry.categoryColors;
+
+export const STATUS_META = {
+  working: { label: "working", className: "status-working" },
+  partial: { label: "partial", className: "status-partial" },
+  planned: { label: "planned", className: "status-planned" },
+};
+
+export function isPlaceable(component) {
+  return Boolean(component) && component.status !== "planned";
+}
 
 const CATALOG_BY_ID = Object.fromEntries(
   XFLOWS_CATALOG.map((component) => [component.id, component])

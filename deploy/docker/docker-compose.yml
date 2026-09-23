@@ -42,12 +42,11 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DB: postgresql
+      DB: postgres12
       DB_PORT: 5432
       POSTGRES_SEEDS: postgres
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PWD: ${POSTGRES_PASSWORD}
-      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
     ports:
       - "7233:7233"
 
@@ -60,9 +59,9 @@ services:
         condition: service_started
     environment:
       TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_UI_PORT: 8080
+      TEMPORAL_UI_PORT: 8081
     ports:
-      - "8080:8080"
+      - "8081:8081"
 
   litellm:
     image: ghcr.io/berriai/litellm:main-stable
@@ -84,8 +83,8 @@ services:
 
   api:
     build:
-      context: ../../apps/api
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: apps/api/Dockerfile
     profiles: ["core"]
     restart: unless-stopped
     env_file:
@@ -117,8 +116,8 @@ services:
 
   worker:
     build:
-      context: ../../apps/workers
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: apps/workers/Dockerfile
     profiles: ["core"]
     restart: unless-stopped
     env_file:
@@ -142,8 +141,8 @@ services:
 
   web:
     build:
-      context: ../../apps/web
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: apps/web/Dockerfile
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL}
     profiles: ["core"]

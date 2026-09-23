@@ -38,6 +38,7 @@ venv/
 env/
 ENV/
 pip-wheel-metadata/
+*.egg-info/
 
 # Environment files
 .env

@@ -66,7 +66,7 @@ function StepsPane({
           {selectedNode ? (
             <PropertiesPanel
               node={selectedNode}
-              onSave={(params) => onSaveParams(selectedNode.id, params)}
+              onSave={(params, options) => onSaveParams(selectedNode.id, params, options)}
             />
           ) : (
             <div className="wf-empty">

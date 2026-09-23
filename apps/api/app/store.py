@@ -10,6 +10,8 @@ from uuid import uuid4
 import asyncpg
 from redis.asyncio import Redis
 
+from xflows_engine.context import SECRET_KEY_PATTERN
+
 from .models import (
     ProjectCreateRequest,
     ProjectRecord,
@@ -56,6 +58,23 @@ def _decode_json_object(value: object, default: dict) -> dict:
 
 def _advisory_key(value: str) -> int:
     return int.from_bytes(blake2b(value.encode("utf-8"), digest_size=8).digest(), "big", signed=True)
+
+
+def split_secret_configs(configs: dict) -> tuple[dict, dict[str, str]]:
+    """Split project configs into (clean_configs, secrets) (fix XF-01).
+
+    Secret-shaped keys (``SECRET_KEY_PATTERN``) are removed from the configs —
+    which are stored in JSONB and returned through the API — and returned
+    separately so stores can persist them in ``project_secrets``.
+    """
+    cleaned = dict(configs)
+    secrets: dict[str, str] = {}
+    for key in list(cleaned):
+        if SECRET_KEY_PATTERN.search(key):
+            value = cleaned.pop(key)
+            if isinstance(value, str) and value:
+                secrets[key] = value
+    return cleaned, secrets
 
 
 class BaseStore(ABC):
@@ -138,6 +157,40 @@ class BaseStore(ABC):
         self, project_id: str, trigger_id: str, payload: TriggerUpdateRequest
     ) -> TriggerRecord | None: ...
 
+    # --- Wave 4: versioning, deletion, triggers, secrets (XU-8/XU-9, XF-01/05) ---
+    @abstractmethod
+    async def set_workflow_status(self, workflow_id: str, status: str) -> WorkflowRecord | None: ...
+
+    @abstractmethod
+    async def delete_workflow(self, workflow_id: str) -> bool: ...
+
+    @abstractmethod
+    async def workflow_run_count(self, workflow_id: str) -> int: ...
+
+    @abstractmethod
+    async def delete_project(self, project_id: str) -> bool: ...
+
+    @abstractmethod
+    async def delete_trigger(self, project_id: str, trigger_id: str) -> bool: ...
+
+    @abstractmethod
+    async def get_trigger(self, trigger_id: str) -> TriggerRecord | None: ...
+
+    @abstractmethod
+    async def list_enabled_triggers(self, trigger_type: str) -> list[TriggerRecord]: ...
+
+    @abstractmethod
+    async def set_project_secret(self, project_id: str, name: str, value: str) -> None: ...
+
+    @abstractmethod
+    async def list_project_secret_names(self, project_id: str) -> list[dict]: ...
+
+    @abstractmethod
+    async def get_project_secret(self, project_id: str, name: str) -> str | None: ...
+
+    @abstractmethod
+    async def find_run_by_idempotency_key(self, workflow_id: str, idempotency_key: str) -> RunRecord | None: ...
+
 
 class InMemoryStore(BaseStore):
     def __init__(self) -> None:
@@ -148,6 +201,7 @@ class InMemoryStore(BaseStore):
         self.run_events: dict[str, list[RunEvent]] = defaultdict(list)
         self.triggers: dict[str, dict[str, TriggerRecord]] = defaultdict(dict)
         self.idempotency_index: dict[tuple[str, str], str] = {}
+        self.project_secrets: dict[tuple[str, str], tuple[str, datetime]] = {}
         self._event_counter = 0
 
     async def close(self) -> None:
@@ -213,6 +267,10 @@ class InMemoryStore(BaseStore):
         if not project:
             return None
         changes = payload.model_dump(exclude_unset=True)
+        if changes.get("configs") is not None:
+            changes["configs"], secrets = split_secret_configs(changes["configs"])
+            for name, value in secrets.items():
+                await self.set_project_secret(project_id, name, value)
         updated = project.model_copy(update=changes | {"updatedAt": utc_now()})
         self.projects[project_id] = updated
         return updated
@@ -225,6 +283,7 @@ class InMemoryStore(BaseStore):
             description=payload.description,
             version=1,
             status="draft",
+            durable=payload.durable,
             nodes=payload.nodes,
             edges=payload.edges,
             metadata=payload.metadata,
@@ -237,6 +296,12 @@ class InMemoryStore(BaseStore):
     async def upsert_workflow(self, payload: WorkflowCreateRequest) -> WorkflowRecord:
         existing = await self.get_workflow(payload.id)
         if existing:
+            definition_changed = (
+                [node.model_dump(mode="json") for node in existing.nodes]
+                != [node.model_dump(mode="json") for node in payload.nodes]
+                or [edge.model_dump(mode="json") for edge in existing.edges]
+                != [edge.model_dump(mode="json") for edge in payload.edges]
+            )
             updated = existing.model_copy(
                 update={
                     "name": payload.name,
@@ -244,12 +309,60 @@ class InMemoryStore(BaseStore):
                     "nodes": payload.nodes,
                     "edges": payload.edges,
                     "metadata": payload.metadata,
+                    "durable": payload.durable,
+                    "version": existing.version + 1 if definition_changed else existing.version,
                     "updatedAt": utc_now(),
                 }
             )
             self.workflows[existing.id] = updated
             return updated
         return await self.create_workflow(payload)
+
+    async def set_workflow_status(self, workflow_id: str, status: str) -> WorkflowRecord | None:
+        existing = self.workflows.get(workflow_id)
+        if not existing:
+            return None
+        updated = existing.model_copy(update={"status": status, "updatedAt": utc_now()})
+        self.workflows[workflow_id] = updated
+        return updated
+
+    async def delete_workflow(self, workflow_id: str) -> bool:
+        return self.workflows.pop(workflow_id, None) is not None
+
+    async def workflow_run_count(self, workflow_id: str) -> int:
+        return sum(1 for run in self.runs.values() if run.workflowId == workflow_id)
+
+    async def delete_project(self, project_id: str) -> bool:
+        if project_id not in self.projects:
+            return False
+        del self.projects[project_id]
+        for run in self.runs.values():
+            if run.projectId == project_id:
+                run.projectId = None
+        for trigger_id in list(self.triggers.get(project_id, {})):
+            del self.triggers[project_id][trigger_id]
+        return True
+
+    async def delete_trigger(self, project_id: str, trigger_id: str) -> bool:
+        bucket = self.triggers.get(project_id, {})
+        if trigger_id not in bucket:
+            return False
+        del bucket[trigger_id]
+        return True
+
+    async def get_trigger(self, trigger_id: str) -> TriggerRecord | None:
+        for bucket in self.triggers.values():
+            if trigger_id in bucket:
+                return bucket[trigger_id]
+        return None
+
+    async def list_enabled_triggers(self, trigger_type: str) -> list[TriggerRecord]:
+        return [
+            trigger
+            for bucket in self.triggers.values()
+            for trigger in bucket.values()
+            if trigger.type == trigger_type and trigger.enabled
+        ]
 
     async def get_workflow(self, workflow_id: str) -> WorkflowRecord | None:
         return self.workflows.get(workflow_id)
@@ -302,6 +415,18 @@ class InMemoryStore(BaseStore):
         return run
 
     async def append_event(self, event: RunEvent) -> RunEvent:
+        if event.eventKey:
+            if not hasattr(self, "_event_keys"):
+                self._event_keys: set[str] = set()
+            if event.eventKey in self._event_keys:
+                existing = [
+                    item
+                    for item in self.run_events.get(event.runId, [])
+                    if item.eventKey == event.eventKey
+                ]
+                if existing:
+                    return existing[-1]
+            self._event_keys.add(event.eventKey)
         self._event_counter += 1
         with_id = event.model_copy(update={"id": self._event_counter})
         self.run_events[event.runId].append(with_id)
@@ -347,6 +472,26 @@ class InMemoryStore(BaseStore):
         )
         self.triggers[project_id][trigger.id] = updated
         return updated
+
+    async def set_project_secret(self, project_id: str, name: str, value: str) -> None:
+        self.project_secrets[(project_id, name)] = (value, utc_now())
+
+    async def list_project_secret_names(self, project_id: str) -> list[dict]:
+        return [
+            {"name": name, "updatedAt": updated_at}
+            for (pid, name), (_, updated_at) in sorted(self.project_secrets.items())
+            if pid == project_id
+        ]
+
+    async def get_project_secret(self, project_id: str, name: str) -> str | None:
+        entry = self.project_secrets.get((project_id, name))
+        return entry[0] if entry else None
+
+    async def find_run_by_idempotency_key(self, workflow_id: str, idempotency_key: str) -> RunRecord | None:
+        existing_id = self.idempotency_index.get((workflow_id, idempotency_key))
+        if not existing_id:
+            return None
+        return self.runs.get(existing_id)
 
 
 class PostgresStore(BaseStore):
@@ -468,6 +613,7 @@ class PostgresStore(BaseStore):
             description=row["description"],
             version=row["version"],
             status=row["status"],
+            durable=bool(row["durable"]) if "durable" in row.keys() else False,
             nodes=definition.get("nodes", []),
             edges=definition.get("edges", []),
             metadata=definition.get("metadata", {}),
@@ -504,6 +650,7 @@ class PostgresStore(BaseStore):
             payload=payload,
             timestamp=row["occurred_at"],
             traceId=row["trace_id"],
+            eventKey=row.get("event_key"),
         )
 
     async def create_project(self, payload: ProjectCreateRequest) -> ProjectRecord:
@@ -574,12 +721,17 @@ class PostgresStore(BaseStore):
         if not existing:
             return None
         patch = payload.model_dump(exclude_unset=True)
+        secrets: dict[str, str] = {}
+        if patch.get("configs") is not None:
+            patch["configs"], secrets = split_secret_configs(patch["configs"])
         merged = existing.model_copy(
             update={
                 **patch,
                 "updatedAt": utc_now(),
             }
         )
+        for name, value in secrets.items():
+            await self.set_project_secret(project_id, name, value)
         row = await self.pool.fetchrow(
             """
             UPDATE projects
@@ -613,14 +765,15 @@ class PostgresStore(BaseStore):
         row = await self.pool.fetchrow(
             """
             INSERT INTO workflows (
-                id, project_id, name, description, version, status, definition, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, 1, 'draft', $5::jsonb, $6, $7)
+                id, project_id, name, description, version, status, durable, definition, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, 1, 'draft', $5, $6::jsonb, $7, $8)
             RETURNING *
             """,
             payload.id,
             project_id,
             payload.name,
             payload.description,
+            payload.durable,
             json.dumps(
                 {
                     "nodes": [node.model_dump(mode="json") for node in payload.nodes],
@@ -639,14 +792,20 @@ class PostgresStore(BaseStore):
         row = await self.pool.fetchrow(
             """
             INSERT INTO workflows (
-                id, project_id, name, description, version, status, definition, created_at, updated_at
+                id, project_id, name, description, version, status, durable, definition, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, 1, 'draft', $5::jsonb, $6, $7)
+            VALUES ($1, $2, $3, $4, 1, 'draft', $5, $6::jsonb, $7, $8)
             ON CONFLICT (id) DO UPDATE SET
                 project_id = EXCLUDED.project_id,
                 name = EXCLUDED.name,
                 description = EXCLUDED.description,
+                durable = EXCLUDED.durable,
                 definition = EXCLUDED.definition,
+                version = CASE
+                    WHEN workflows.definition IS DISTINCT FROM EXCLUDED.definition
+                    THEN workflows.version + 1
+                    ELSE workflows.version
+                END,
                 updated_at = EXCLUDED.updated_at
             RETURNING *
             """,
@@ -654,6 +813,7 @@ class PostgresStore(BaseStore):
             project_id,
             payload.name,
             payload.description,
+            payload.durable,
             json.dumps(
                 {
                     "nodes": [node.model_dump(mode="json") for node in payload.nodes],
@@ -665,6 +825,113 @@ class PostgresStore(BaseStore):
             now,
         )
         return self._workflow_row_to_record(row)
+
+    async def set_workflow_status(self, workflow_id: str, status: str) -> WorkflowRecord | None:
+        row = await self.pool.fetchrow(
+            """
+            UPDATE workflows SET status = $2, updated_at = $3
+            WHERE id = $1
+            RETURNING *
+            """,
+            workflow_id,
+            status,
+            utc_now(),
+        )
+        return self._workflow_row_to_record(row) if row else None
+
+    async def delete_workflow(self, workflow_id: str) -> bool:
+        result = await self.pool.execute("DELETE FROM workflows WHERE id = $1", workflow_id)
+        return result.endswith("1")
+
+    async def workflow_run_count(self, workflow_id: str) -> int:
+        count = await self.pool.fetchval("SELECT COUNT(*) FROM runs WHERE workflow_id = $1", workflow_id)
+        return int(count or 0)
+
+    async def delete_project(self, project_id: str) -> bool:
+        result = await self.pool.execute("DELETE FROM projects WHERE id = $1", project_id)
+        return result.endswith("1")
+
+    async def delete_trigger(self, project_id: str, trigger_id: str) -> bool:
+        result = await self.pool.execute(
+            "DELETE FROM triggers WHERE project_id = $1 AND id = $2",
+            project_id,
+            trigger_id,
+        )
+        return result.endswith("1")
+
+    async def get_trigger(self, trigger_id: str) -> TriggerRecord | None:
+        row = await self.pool.fetchrow("SELECT * FROM triggers WHERE id = $1", trigger_id)
+        if not row:
+            return None
+        return TriggerRecord(
+            id=row["id"],
+            projectId=row["project_id"],
+            type=row["type"],
+            enabled=row["enabled"],
+            config=_decode_json_object(row["config"], {}),
+            createdAt=row["created_at"],
+            updatedAt=row["updated_at"],
+        )
+
+    async def list_enabled_triggers(self, trigger_type: str) -> list[TriggerRecord]:
+        rows = await self.pool.fetch(
+            "SELECT * FROM triggers WHERE type = $1 AND enabled ORDER BY created_at ASC",
+            trigger_type,
+        )
+        return [
+            TriggerRecord(
+                id=row["id"],
+                projectId=row["project_id"],
+                type=row["type"],
+                enabled=row["enabled"],
+                config=_decode_json_object(row["config"], {}),
+                createdAt=row["created_at"],
+                updatedAt=row["updated_at"],
+            )
+            for row in rows
+        ]
+
+    async def set_project_secret(self, project_id: str, name: str, value: str) -> None:
+        now = utc_now()
+        await self.pool.execute(
+            """
+            INSERT INTO project_secrets (project_id, name, value, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $4)
+            ON CONFLICT (project_id, name)
+            DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
+            """,
+            project_id,
+            name,
+            value,
+            now,
+        )
+
+    async def list_project_secret_names(self, project_id: str) -> list[dict]:
+        rows = await self.pool.fetch(
+            "SELECT name, updated_at FROM project_secrets WHERE project_id = $1 ORDER BY name",
+            project_id,
+        )
+        return [{"name": row["name"], "updatedAt": row["updated_at"]} for row in rows]
+
+    async def get_project_secret(self, project_id: str, name: str) -> str | None:
+        value = await self.pool.fetchval(
+            "SELECT value FROM project_secrets WHERE project_id = $1 AND name = $2",
+            project_id,
+            name,
+        )
+        return value
+
+    async def find_run_by_idempotency_key(self, workflow_id: str, idempotency_key: str) -> RunRecord | None:
+        row = await self.pool.fetchrow(
+            """
+            SELECT r.* FROM idempotency_keys k
+            JOIN runs r ON r.id = k.run_id
+            WHERE k.workflow_id = $1 AND k.idempotency_key = $2 AND k.expires_at > NOW()
+            """,
+            workflow_id,
+            idempotency_key,
+        )
+        return self._run_row_to_record(row) if row else None
 
     async def get_workflow(self, workflow_id: str) -> WorkflowRecord | None:
         row = await self.pool.fetchrow("SELECT * FROM workflows WHERE id = $1", workflow_id)
@@ -791,8 +1058,9 @@ class PostgresStore(BaseStore):
     async def append_event(self, event: RunEvent) -> RunEvent:
         row = await self.pool.fetchrow(
             """
-            INSERT INTO run_events (run_id, node_id, event_type, payload, trace_id, occurred_at)
-            VALUES ($1, $2, $3, $4::jsonb, $5, $6)
+            INSERT INTO run_events (run_id, node_id, event_type, payload, trace_id, occurred_at, event_key)
+            VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
+            ON CONFLICT (run_id, event_key) WHERE event_key IS NOT NULL DO NOTHING
             RETURNING *
             """,
             event.runId,
@@ -801,7 +1069,19 @@ class PostgresStore(BaseStore):
             json.dumps(event.payload),
             event.traceId,
             event.timestamp,
+            event.eventKey,
         )
+        if row is None:
+            row = await self.pool.fetchrow(
+                """
+                SELECT * FROM run_events
+                WHERE run_id = $1 AND event_key = $2
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                event.runId,
+                event.eventKey,
+            )
         return self._event_row_to_record(row)
 
     async def get_events(
@@ -1031,3 +1311,45 @@ class DualWriteStore(BaseStore):
         if self.reads_from_sql:
             return updated
         return memory_updated
+
+    async def set_workflow_status(self, workflow_id: str, status: str) -> WorkflowRecord | None:
+        memory_updated = await self.memory.set_workflow_status(workflow_id, status)
+        sql_updated = await self.sql.set_workflow_status(workflow_id, status)
+        return sql_updated if self.reads_from_sql else memory_updated
+
+    async def delete_workflow(self, workflow_id: str) -> bool:
+        deleted = await self.sql.delete_workflow(workflow_id)
+        await self.memory.delete_workflow(workflow_id)
+        return deleted
+
+    async def workflow_run_count(self, workflow_id: str) -> int:
+        return await self._reader().workflow_run_count(workflow_id)
+
+    async def delete_project(self, project_id: str) -> bool:
+        deleted = await self.sql.delete_project(project_id)
+        await self.memory.delete_project(project_id)
+        return deleted
+
+    async def delete_trigger(self, project_id: str, trigger_id: str) -> bool:
+        deleted = await self.sql.delete_trigger(project_id, trigger_id)
+        await self.memory.delete_trigger(project_id, trigger_id)
+        return deleted
+
+    async def get_trigger(self, trigger_id: str) -> TriggerRecord | None:
+        return await self._reader().get_trigger(trigger_id)
+
+    async def list_enabled_triggers(self, trigger_type: str) -> list[TriggerRecord]:
+        return await self._reader().list_enabled_triggers(trigger_type)
+
+    async def set_project_secret(self, project_id: str, name: str, value: str) -> None:
+        await self.memory.set_project_secret(project_id, name, value)
+        await self.sql.set_project_secret(project_id, name, value)
+
+    async def list_project_secret_names(self, project_id: str) -> list[dict]:
+        return await self._reader().list_project_secret_names(project_id)
+
+    async def get_project_secret(self, project_id: str, name: str) -> str | None:
+        return await self._reader().get_project_secret(project_id, name)
+
+    async def find_run_by_idempotency_key(self, workflow_id: str, idempotency_key: str) -> RunRecord | None:
+        return await self._reader().find_run_by_idempotency_key(workflow_id, idempotency_key)

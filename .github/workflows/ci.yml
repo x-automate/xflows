@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: xflows
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/xflows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r apps/api/requirements.txt
+          pip install -r apps/workers/requirements.txt
+          pip install -e packages/xflows-engine
+          pip install pytest
+      - name: Lint (ruff)
+        run: ruff check apps packages tools
+      - name: Unit tests (engine)
+        run: pytest packages/xflows-engine/tests -q
+      - name: Unit tests (api)
+        run: python -m pytest apps/api/tests -q
+      - name: Unit tests (workers)
+        run: pytest apps/workers/tests -q
+        env:
+          PYTHONPATH: apps/workers
+      - name: Alembic migration round-trip
+        working-directory: apps/api
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Lint (eslint)
+        run: npm run lint
+      - name: Unit tests (vitest)
+        run: npm test
+      - name: Build
+        run: npm run build

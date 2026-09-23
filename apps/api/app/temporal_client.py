@@ -50,3 +50,14 @@ class TemporalGateway:
             return TemporalHandle(connected=True)
         except Exception as exc:
             return TemporalHandle(connected=False, reason=str(exc))
+
+    async def signal_workflow(self, workflow_handle_id: str, signal_name: str, payload: Any) -> TemporalHandle:
+        status = await self.connect()
+        if not status.connected or not self._client:
+            return status
+        try:
+            handle = self._client.get_workflow_handle(workflow_handle_id)
+            await handle.signal(signal_name, payload)
+            return TemporalHandle(connected=True)
+        except Exception as exc:
+            return TemporalHandle(connected=False, reason=str(exc))

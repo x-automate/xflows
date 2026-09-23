@@ -44,6 +44,7 @@ export function validateWorkflow(nodes, edges) {
   const nodeById = Object.fromEntries(nodes.map((node) => [node.id, node]));
   const dataEdges = edges.filter((edge) => (edge.kind || "data") === "data");
   const configEdges = edges.filter((edge) => edge.kind === "config");
+  const errorEdges = edges.filter((edge) => edge.kind === "error");
   const order = topoSort(nodes, dataEdges);
   if (!order) {
     errors.push("Workflow contains a cycle. Remove the looping connection.");
@@ -99,6 +100,11 @@ export function validateWorkflow(nodes, edges) {
 
   nodes.forEach((node) => {
     const nodeMeta = meta(node);
+    if (nodeMeta.status === "planned") {
+      errors.push(
+        `"${nodeMeta.name}" is planned but not implemented yet and cannot be executed.`
+      );
+    }
     if (nodeMeta.kind === "provider") {
       const parent = node.parent ? nodeById[node.parent] : null;
       const parentMeta = parent ? meta(parent) : null;
@@ -146,6 +152,21 @@ export function validateWorkflow(nodes, edges) {
       errors.push(
         `"${sourceMeta.name}" cannot connect to "${targetMeta.name}.${slot.name}".`
       );
+    }
+  });
+
+  errorEdges.forEach((edge) => {
+    const source = nodeById[edge.source];
+    const target = nodeById[edge.target];
+    if (!source || !target) {
+      errors.push("Error edge references a missing node.");
+      return;
+    }
+    if (meta(target).kind === "input") {
+      errors.push(`Error edge cannot target Input "${meta(target).name}".`);
+    }
+    if (edge.when !== undefined && edge.when !== null && typeof edge.when !== "string") {
+      errors.push(`Error edge into "${meta(target).name}" has an invalid when predicate.`);
     }
   });
 

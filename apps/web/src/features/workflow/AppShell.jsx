@@ -26,7 +26,6 @@ const STARTER = () => {
   const llm = uid();
   const provider = uid();
   const d = uid();
-  const t = uid();
   return {
     nodes: [
       { id: a, componentId: "Input", x: 60, y: 180, params: {} },
@@ -54,19 +53,11 @@ const STARTER = () => {
         params: { model: "gpt-4o-mini", temperature: 0.7, max_tokens: 256 },
       },
       { id: d, componentId: "Output", x: 680, y: 180, params: {} },
-      {
-        id: t,
-        componentId: "Tracer",
-        x: 420,
-        y: 320,
-        params: { level: "info", destination: "both" },
-      },
     ],
     edges: [
       { id: "e1", source: a, target: b, kind: "data" },
       { id: "e2", source: b, target: llm, kind: "data" },
       { id: "e3", source: llm, target: d, kind: "data" },
-      { id: "e4", source: t, target: llm, kind: "config", slot: "tracer" },
     ],
   };
 };
@@ -217,6 +208,25 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
     });
   };
 
+  const updateEdge = (id, patch) => {
+    if (readOnly) return;
+    setGraph((current) => ({
+      ...current,
+      edges: current.edges.map((edge) =>
+        edge.id === id ? { ...edge, ...patch } : edge
+      ),
+    }));
+  };
+
+  const deleteEdge = (id) => {
+    if (readOnly) return;
+    commit({
+      nodes,
+      edges: edges.filter((edge) => edge.id !== id),
+    });
+    setSelected(null);
+  };
+
   const deleteSelected = useCallback(() => {
     if (readOnly) return;
     if (!selected) return;
@@ -253,10 +263,19 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
     setSelected(copy.id);
   };
 
-  const updateNodeParams = (id, params) => {
+  const updateNodeParams = (id, params, options) => {
     if (readOnly) return;
     commit({
-      nodes: nodes.map((node) => (node.id === id ? { ...node, params } : node)),
+      nodes: nodes.map((node) => {
+        if (node.id !== id) return node;
+        const next = { ...node, params };
+        if (options) {
+          next.retry = options.retry ?? null;
+          next.timeoutS = options.timeoutS ?? null;
+          next.onError = options.onError ?? null;
+        }
+        return next;
+      }),
       edges,
     });
   };
@@ -322,6 +341,16 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
         error: eventPayload.payload?.error ?? "Node failed",
       };
     }
+    if (eventPayload.type === "node_skipped") {
+      return { type: "skipped", nodeId: eventPayload.nodeId };
+    }
+    if (eventPayload.type === "node_routed_to_error") {
+      return {
+        type: "routed",
+        nodeId: eventPayload.nodeId,
+        error: eventPayload.payload?.error ?? null,
+      };
+    }
     return null;
   };
 
@@ -364,6 +393,10 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
         }
       } else if (event.type === "error") {
         next.runStatus = { ...previous.runStatus, [event.nodeId]: "error" };
+      } else if (event.type === "skipped") {
+        next.runStatus = { ...previous.runStatus, [event.nodeId]: "skipped" };
+      } else if (event.type === "routed") {
+        next.runStatus = { ...previous.runStatus, [event.nodeId]: "routed" };
       }
       return next;
     });
@@ -682,6 +715,8 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
               onNodeMove={moveNode}
               onNodeAdd={addNodeAt}
               onConnect={connect}
+              onUpdateEdge={updateEdge}
+              onDeleteEdge={deleteEdge}
               onDelete={(id) => {
                 setSelected(id);
                 setTimeout(deleteSelected, 0);

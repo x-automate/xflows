@@ -38,7 +38,7 @@ Core endpoints:
 
 - Web: `http://localhost:4173`
 - API: `http://localhost:8000/health`
-- Temporal UI: `http://localhost:8080`
+- Temporal UI: `http://localhost:8081`
 - LiteLLM: `http://localhost:4000`
 
 ## 3) Start observability profile (optional)

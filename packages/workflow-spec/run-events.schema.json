@@ -11,7 +11,16 @@
     },
     "type": {
       "type": "string",
-      "enum": ["run_started", "node_started", "node_succeeded", "node_failed", "run_succeeded", "run_failed"]
+      "enum": [
+        "run_started",
+        "node_started",
+        "node_succeeded",
+        "node_failed",
+        "run_awaiting_review",
+        "signal_received",
+        "run_succeeded",
+        "run_failed"
+      ]
     },
     "nodeId": {
       "type": "string"

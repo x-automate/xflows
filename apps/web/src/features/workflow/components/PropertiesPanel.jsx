@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   CATEGORY_COLORS,
+  STATUS_META,
   XFLOWS_ICONS,
   getComponentMeta,
 } from "../catalog/catalog-meta";
@@ -15,6 +16,11 @@ function PropertiesPanel({ node, onSave }) {
     }
     return next;
   });
+  const [options, setOptions] = useState(() => ({
+    retry: { ...(node.retry || {}), attempts: node.retry?.attempts ?? 3, backoffMs: node.retry?.backoffMs ?? 1000 },
+    timeoutS: node.timeoutS ?? 120,
+    onError: node.onError || "fail",
+  }));
 
   useEffect(() => {
     const next = {};
@@ -23,15 +29,30 @@ function PropertiesPanel({ node, onSave }) {
         node.params && param.name in node.params ? node.params[param.name] : param.default;
     }
     setVals(next);
-  }, [node.id, node.params, meta?.params]);
+    setOptions({
+      retry: { ...(node.retry || {}), attempts: node.retry?.attempts ?? 3, backoffMs: node.retry?.backoffMs ?? 1000 },
+      timeoutS: node.timeoutS ?? 120,
+      onError: node.onError || "fail",
+    });
+  }, [node.id, node.params, node.retry, node.timeoutS, node.onError, meta?.params]);
 
   if (!meta) return null;
   const color = CATEGORY_COLORS[meta.category];
+  const status = STATUS_META[meta.status] || STATUS_META.planned;
 
   const update = (key, value) => {
     const next = { ...vals, [key]: value };
     setVals(next);
-    onSave(next);
+    onSave(next, options);
+  };
+
+  const updateOption = (key, value) => {
+    const nextOptions =
+      key === "attempts" || key === "backoffMs"
+        ? { ...options, retry: { ...options.retry, [key]: value } }
+        : { ...options, [key]: value };
+    setOptions(nextOptions);
+    onSave(vals, nextOptions);
   };
 
   return (
@@ -46,10 +67,12 @@ function PropertiesPanel({ node, onSave }) {
           <div className="wf-props-name">{meta.name}</div>
           <div className="wf-props-cat" style={{ color: color.fg }}>
             {meta.category}
+            <span className={`wf-cp-status ${status.className}`}>{status.label}</span>
           </div>
         </div>
       </div>
       <div className="wf-props-desc">{meta.desc}</div>
+      {meta.statusNote && <div className="wf-props-note">{meta.statusNote}</div>}
       <div className="wf-props-body">
         {(meta.params || []).length === 0 && <div className="wf-empty-mini">No parameters.</div>}
         {(meta.params || []).map((param) => (
@@ -110,6 +133,62 @@ function PropertiesPanel({ node, onSave }) {
             {param.help && <div className="wf-field-help">{param.help}</div>}
           </div>
         ))}
+      </div>
+      <div className="wf-props-advanced">
+        <div className="wf-props-adv-title">Execution options (per node)</div>
+        <div className="wf-field">
+          <label>
+            <span className="wf-field-name">retry.attempts</span>
+            <span className="wf-field-default">default: 3</span>
+          </label>
+          <input
+            type="number"
+            min={1}
+            value={options.retry.attempts ?? ""}
+            onChange={(event) =>
+              updateOption("attempts", event.target.value === "" ? "" : Number(event.target.value))
+            }
+          />
+        </div>
+        <div className="wf-field">
+          <label>
+            <span className="wf-field-name">retry.backoffMs</span>
+            <span className="wf-field-default">default: 1000</span>
+          </label>
+          <input
+            type="number"
+            value={options.retry.backoffMs ?? ""}
+            onChange={(event) =>
+              updateOption("backoffMs", event.target.value === "" ? "" : Number(event.target.value))
+            }
+          />
+        </div>
+        <div className="wf-field">
+          <label>
+            <span className="wf-field-name">timeoutS</span>
+            <span className="wf-field-default">default: 120</span>
+          </label>
+          <input
+            type="number"
+            value={options.timeoutS ?? ""}
+            onChange={(event) =>
+              updateOption("timeoutS", event.target.value === "" ? "" : Number(event.target.value))
+            }
+          />
+        </div>
+        <div className="wf-field">
+          <label>
+            <span className="wf-field-name">onError</span>
+            <span className="wf-field-default">error edges route failures automatically</span>
+          </label>
+          <select
+            value={options.onError}
+            onChange={(event) => updateOption("onError", event.target.value)}
+          >
+            <option value="fail">fail</option>
+            <option value="continue">continue</option>
+          </select>
+        </div>
       </div>
     </div>
   );
