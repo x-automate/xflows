@@ -12,6 +12,7 @@ from .integrations import (
 from .io import InputExecutor, OutputExecutor, PromptTemplateExecutor
 from .llm import ChatLikeExecutor
 from .pipeline import CodegenExecutor, SchemaValidateExecutor, SubWorkflowExecutor
+from .retrieval import VectorStoreExecutor, WebSearchExecutor
 from .xws_tools import (
     XWS3Executor,
     XWSApigwRegisterExecutor,
@@ -42,7 +43,9 @@ __all__ = [
     "SchemaValidateExecutor",
     "SubWorkflowExecutor",
     "SwitchExecutor",
+    "VectorStoreExecutor",
     "WaitExecutor",
+    "WebSearchExecutor",
     "WebhookTriggerExecutor",
     "XWS3Executor",
     "XWSApigwRegisterExecutor",

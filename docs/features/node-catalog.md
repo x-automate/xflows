@@ -67,9 +67,9 @@ Adapter modules:
 
 | Status | Count | Components |
 |---|---|---|
-| working | 21 | Input, Output, PromptTemplate, LLM, OpenAIChat, AnthropicChat, LiteLLM, ApiCaller, IfElse, Switch, Wait, Approval, AgentLoop, SchemaValidate, Codegen, SubWorkflow, XWSS3, XWSLambdaInvoke, XWSIAMEvaluate, XWSRelayNotify, XWSGatewayLLM |
+| working | 23 | Input, Output, PromptTemplate, LLM, OpenAIChat, AnthropicChat, LiteLLM, ApiCaller, IfElse, Switch, Wait, Approval, AgentLoop, SchemaValidate, Codegen, SubWorkflow, XWSS3, XWSLambdaInvoke, XWSIAMEvaluate, XWSRelayNotify, XWSGatewayLLM, WebSearch, VectorStore |
 | partial | 2 | HttpRequest (headers/body/auth ignored, XF-09), LangfuseTracer (node params not applied; run-level tracing active) |
-| planned | 16 | Webhook (XU-8), ReActAgent (XU-3), WebSearch, CodeExec, VectorStore, Summarizer, JsonParser, RegexExtract, Markdown, Tracer, LangsmithTracer (Wave 6), Guardrail, LoopOverItems (Wave 6), XWSDmsIntrospect, XWSApigwRegister, XWSAudit (XWS Wave 4+) |
+| planned | 14 | Webhook (XU-8), ReActAgent (XU-3), CodeExec, Summarizer, JsonParser, RegexExtract, Markdown, Tracer, LangsmithTracer (Wave 6), Guardrail, LoopOverItems (Wave 6), XWSDmsIntrospect, XWSApigwRegister, XWSAudit (XWS Wave 4+) |
 
 The five working XWS tools (Waves 3 + 5) execute via the SigV4-signed XWS transport with
 per-run AssumeRole credentials; the three remaining planned XWS tools are inert placeholders
@@ -176,7 +176,7 @@ level into `metadata.usage = {inputTokens, outputTokens, totalTokens, costEstima
 |---|---|---|
 | `HttpRequest` | `method` (select GET/POST, default GET), `url` (text), `body_uses_input` (bool, true) | `HttpRequestExecutor` — URL required, else the node fails |
 | `ApiCaller` | `method` (select GET/POST/PUT/PATCH/DELETE, default GET), `url` (text) | `ApiCallerExecutor` (alias `ApiCall`) — URL required |
-| `WebSearch` | `top_k` (number, 3) | Passthrough today (tool wrapper) |
+| `WebSearch` | `top_k` (number, 3) | DuckDuckGo Lite search via HTTP; query from node params/upstream input, passthrough fallback on failure |
 | `CodeExec` | `code` (textarea, default `return input.toUpperCase();`) | Passthrough today (sandbox pending) |
 
 ### XWS
@@ -228,7 +228,7 @@ per-role credential wiring is already declared.
 
 | id | Params | Notes |
 |---|---|---|
-| `VectorStore` | `collection` (text, `docs`), `top_k` (number, 3), `query` (text, "") | Aux node; attach to the LLM `memory` slot |
+| `VectorStore` | `collection` (text, `docs`), `top_k` (number, 3), `query` (text, "") | Aux node; attach to the LLM `memory` slot. Passes input through, echoing `collection`/`top_k`/`query` in metadata |
 | `Summarizer` | `max_chars` (number, 200) | Transform (passthrough semantics today) |
 
 ### Control

@@ -18,7 +18,9 @@ from .executors import (
     SchemaValidateExecutor,
     SubWorkflowExecutor,
     SwitchExecutor,
+    VectorStoreExecutor,
     WaitExecutor,
+    WebSearchExecutor,
     WebhookTriggerExecutor,
     XWS3Executor,
     XWSApigwRegisterExecutor,
@@ -61,4 +63,6 @@ def create_default_registry() -> NodeRegistry:
     registry.register(SchemaValidateExecutor())
     registry.register(CodegenExecutor())
     registry.register(SubWorkflowExecutor())
+    registry.register(VectorStoreExecutor())
+    registry.register(WebSearchExecutor())
     return registry

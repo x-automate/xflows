@@ -427,8 +427,7 @@
       "kind": "tool",
       "icon": "search",
       "desc": "Search tool wrapper.",
-      "status": "planned",
-      "statusNote": "Executor not implemented yet.",
+      "status": "working",
       "params": [
         {
           "name": "top_k",
@@ -463,8 +462,7 @@
       "kind": "aux",
       "icon": "vector",
       "desc": "Vector retrieval - attach to LLM as memory.",
-      "status": "planned",
-      "statusNote": "Executor not implemented yet.",
+      "status": "working",
       "params": [
         {
           "name": "collection",

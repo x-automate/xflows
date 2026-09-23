@@ -302,8 +302,8 @@ class FlowExecutorTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_loud_failure_executor_message(self) -> None:
         executor = LoudFailureExecutor()
-        node = {"id": "x", "componentId": "WebSearch", "params": {}}
-        with self.assertRaisesRegex(ValueError, "WebSearch"):
+        node = {"id": "x", "componentId": "Summarizer", "params": {}}
+        with self.assertRaisesRegex(ValueError, "Summarizer"):
             await executor.execute(node, {"value": ""}, _context())
 
 
