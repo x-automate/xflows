@@ -191,19 +191,22 @@ async def run_litellm_chat(
     stop: list[str] | None = None,
     response_format: dict[str, Any] | None = None,
     tools: list[dict[str, Any]] | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
 ) -> dict[str, Any]:
     runtime_config = runtime_config or {}
     model = model_hint or str(runtime_config.get("litellmModel") or settings.litellm_model_alias)
     headers = {"Content-Type": "application/json"}
     auth_key = (
-        runtime_config.get("litellmApiKey")
+        api_key
+        or runtime_config.get("litellmApiKey")
         or settings.litellm_api_key
         or settings.litellm_master_key
     )
     if auth_key:
         headers["Authorization"] = f"Bearer {auth_key}"
 
-    base_url = str(runtime_config.get("litellmBaseUrl") or settings.litellm_base_url)
+    base_url = str(base_url or runtime_config.get("litellmBaseUrl") or settings.litellm_base_url)
     candidate_models = [model]
 
     last_error = "LiteLLM request failed"

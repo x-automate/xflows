@@ -28,6 +28,16 @@ def _chat_options(params: dict[str, Any]) -> dict[str, Any]:
         options["stop"] = [part.strip() for part in stop.split(",") if part.strip()]
     elif isinstance(stop, list) and stop:
         options["stop"] = stop
+    # LiteLLM provider nodes carry an explicit gateway endpoint (apiBase) and
+    # optional apiKey. Forward them through the llm_chat seam so the worker's
+    # router calls THAT LiteLLM API instead of the worker default (fix:
+    # "LiteLLM provider must call a LiteLLM API, not a background ollama").
+    api_base = params.get("apiBase")
+    if isinstance(api_base, str) and api_base.strip():
+        options["base_url"] = api_base.strip()
+    api_key = params.get("apiKey")
+    if isinstance(api_key, str) and api_key.strip():
+        options["api_key"] = api_key.strip()
     return options
 
 

@@ -66,7 +66,7 @@ class RouterPayloadTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_payload_omits_optional_fields_by_default(self) -> None:
         router, captured = _capture_router()
-        await router.chat("hello")
+        await router.chat("hello", model_hint="openai/gpt-4o")
         payload = captured[0]["payload"]
         for key in ("max_tokens", "stop", "response_format", "tools", "stage"):
             self.assertNotIn(key, payload)
@@ -127,8 +127,25 @@ class GatewayRoutingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_litellm_route_uses_chat_completions(self) -> None:
         router, captured = _capture_router()
-        await router.chat("hello", runtime_config={"litellmBaseUrl": "http://litellm:4000"})
+        await router.chat(
+            "hello",
+            model_hint="openai/gpt-4o",
+            runtime_config={"litellmBaseUrl": "http://litellm:4000"},
+        )
         self.assertEqual(captured[0]["path"], CHAT_COMPLETIONS_ENDPOINT)
+
+    async def test_node_base_url_and_api_key_reach_request(self) -> None:
+        router, captured = _capture_router()
+        await router.chat(
+            "hello",
+            model_hint="azure/gpt-4o",
+            base_url="http://10.90.115.195:4000",
+            api_key="sk-1234",
+        )
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(captured[0]["path"], CHAT_COMPLETIONS_ENDPOINT)
+        self.assertEqual(captured[0]["payload"]["model"], "azure/gpt-4o")
+        self.assertEqual(captured[0]["headers"].get("authorization"), "Bearer sk-1234")
 
 
 class UsageHelperTests(unittest.TestCase):
@@ -155,14 +172,14 @@ class CandidateModelTests(unittest.TestCase):
             "openai/gpt-4o-mini",
             {"litellmModel": "openai/gpt-4o", "litellmFallbackModels": "openai/gpt-4o, ollama/llama3.1:8b"},
         )
-        self.assertEqual(candidates, ["openai/gpt-4o-mini", "openai/gpt-4o", "ollama/llama3.1:8b", "vllm/meta-llama/Llama-3.1-8B-Instruct"])
+        self.assertEqual(candidates, ["openai/gpt-4o-mini", "openai/gpt-4o", "ollama/llama3.1:8b"])
         candidates = _candidate_models("hint", {"litellmFallbackModels": ["a", "b"]})
         self.assertEqual(candidates[0], "hint")
         self.assertEqual(candidates[1], "a")
         self.assertEqual(candidates[2], "b")
 
     def test_empty_hint_skipped(self) -> None:
-        self.assertEqual(_candidate_models(None, {}), ["openai/gpt-4o", "vllm/meta-llama/Llama-3.1-8B-Instruct", "ollama/llama3.1:8b"])
+        self.assertEqual(_candidate_models(None, {}), [])
 
 
 if __name__ == "__main__":

@@ -48,6 +48,7 @@ function ProjectRun() {
     }
     setError("");
     try {
+      const runtimeConfig = project.configs || {};
       const run = await startProjectRun(projectId, {
         input: ticket,
         workflow: {
@@ -56,6 +57,7 @@ function ProjectRun() {
           nodes: graph.nodes,
           edges: graph.edges,
         },
+        metadata: { runtimeConfig },
       });
       addProjectRun(projectId, run);
       updateProjectApi(projectId, {

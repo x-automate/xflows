@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     litellm_base_url: str = "http://litellm:4000"
     litellm_model_alias: str = "gpt-4o-mini"
     litellm_api_key: str = "not-used-for-local-proxy"
-    litellm_fallback_models: str = "openai/gpt-4o,vllm/meta-llama/Llama-3.1-8B-Instruct,ollama/llama3.1:8b"
+    litellm_fallback_models: str = ""
 
     langfuse_host: str | None = None
     langfuse_public_key: str | None = None

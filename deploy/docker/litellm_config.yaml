@@ -3,6 +3,12 @@ model_list:
     litellm_params:
       model: openai/gpt-4o-mini
       api_key: os.environ/OPENAI_API_KEY
+  # Alias so workflows requesting openai/gpt-4o resolve to the same backend
+  # instead of 400-ing and falling through the worker's fallback chain.
+  - model_name: openai/gpt-4o
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
 
 router_settings:
   routing_strategy: simple-shuffle

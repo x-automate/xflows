@@ -6,11 +6,10 @@ from .integrations import (
     ApiCallerExecutor,
     LangfuseTracerExecutor,
     LangsmithTracerExecutor,
-    LiteLlmExecutor,
     WebhookTriggerExecutor,
 )
 from .io import InputExecutor, OutputExecutor, PromptTemplateExecutor
-from .llm import ChatLikeExecutor
+from .llm import ChatLikeExecutor, LiteLlmExecutor
 from .pipeline import CodegenExecutor, SchemaValidateExecutor, SubWorkflowExecutor
 from .retrieval import VectorStoreExecutor, WebSearchExecutor
 from .xws_tools import (

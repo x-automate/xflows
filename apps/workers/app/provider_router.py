@@ -32,6 +32,18 @@ CAPABILITY_REGISTRY: dict[str, ProviderRoute] = {
         supports_tools=True,
         max_context_tokens=128000,
     ),
+    "azure/gpt-4o": ProviderRoute(
+        model="azure/gpt-4o",
+        provider="azure",
+        supports_tools=True,
+        max_context_tokens=128000,
+    ),
+    "azure/gpt-4o-mini": ProviderRoute(
+        model="azure/gpt-4o-mini",
+        provider="azure",
+        supports_tools=True,
+        max_context_tokens=128000,
+    ),
     "ollama/llama3.1:8b": ProviderRoute(
         model="ollama/llama3.1:8b",
         provider="ollama",
@@ -48,8 +60,6 @@ CAPABILITY_REGISTRY: dict[str, ProviderRoute] = {
 
 DEFAULT_FALLBACK_CHAIN = [
     "openai/gpt-4o",
-    "vllm/meta-llama/Llama-3.1-8B-Instruct",
-    "ollama/llama3.1:8b",
 ]
 
 PRICE_PER_1M_TOKENS: dict[str, tuple[float, float]] = {
@@ -153,6 +163,8 @@ class LiteLLMRouter:
         stop: list[str] | None = None,
         response_format: dict[str, Any] | None = None,
         tools: list[dict[str, Any]] | None = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
     ) -> dict[str, Any]:
         runtime_config = runtime_config or {}
         gateway_base_url = runtime_config.get("xwsGatewayBaseUrl")
@@ -161,13 +173,21 @@ class LiteLLMRouter:
         base_url = (
             str(gateway_base_url)
             if is_gateway
-            else str(runtime_config.get("litellmBaseUrl") or settings.litellm_base_url)
+            else str(
+                base_url
+                or runtime_config.get("litellmBaseUrl")
+                or settings.litellm_base_url
+            )
         )
         auth_key = (
             runtime_config.get("xwsGatewayApiKey")
             if is_gateway
-            else runtime_config.get("litellmApiKey")
-        ) or settings.litellm_api_key
+            else (
+                api_key
+                or runtime_config.get("litellmApiKey")
+                or settings.litellm_api_key
+            )
+        )
         gateway_stage = runtime_config.get("gatewayStage") or runtime_config.get("xwsGatewayStage")
 
         candidate_models = _candidate_models(model_hint, runtime_config)
