@@ -429,7 +429,8 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
         description: "Workflow created from migrated web editor",
         nodes,
         edges,
-        metadata: { source: "apps/web" },
+        // projectId lets the API merge the project's configs/secret refs into the run.
+        metadata: projectId ? { source: "apps/web", projectId } : { source: "apps/web" },
       };
       await createWorkflow(workflowPayload);
       const runtimeConfig = projectId ? getProject(projectId)?.configs || {} : {};

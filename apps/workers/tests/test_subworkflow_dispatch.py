@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import unittest
-from typing import Any
 
-from app.workflows import _start_dag_child, _run_subworkflow_node
 from test_apigen_workflows import ApiGenTestBase
+
+from app.workflows import _run_subworkflow_node, _start_dag_child
 
 INLINE_DEFINITION = {"name": "helper", "nodes": [{"id": "in"}], "edges": []}
 

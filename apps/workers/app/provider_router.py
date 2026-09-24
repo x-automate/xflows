@@ -115,6 +115,18 @@ def _normalize_usage(raw_usage: dict[str, Any], model: str) -> dict[str, Any]:
     return normalized
 
 
+def normalize_base_url(base_url: str) -> str:
+    """Strip a trailing ``/`` and ``/v1`` so the chat path is never doubled.
+
+    OpenAI-style clients are usually configured with ``http://host:4000/v1``;
+    the router always appends ``/v1/chat/completions`` itself.
+    """
+    url = str(base_url).strip().rstrip("/")
+    if url.endswith("/v1"):
+        url = url[: -len("/v1")]
+    return url
+
+
 def _candidate_models(
     model_hint: str | None,
     runtime_config: dict[str, Any],
@@ -147,7 +159,7 @@ class LiteLLMRouter:
     def __init__(self, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self._transport = transport
         self._client = httpx.AsyncClient(
-            base_url=settings.litellm_base_url,
+            base_url=normalize_base_url(settings.litellm_base_url),
             timeout=60.0,
             transport=transport,
         )
@@ -167,13 +179,16 @@ class LiteLLMRouter:
         api_key: str | None = None,
     ) -> dict[str, Any]:
         runtime_config = runtime_config or {}
-        gateway_base_url = runtime_config.get("xwsGatewayBaseUrl")
+        # An explicit base_url comes from a LiteLLM provider node's apiBase: that
+        # node must call its own LiteLLM API even when the project routes other
+        # LLM calls through the XWS gateway.
+        gateway_base_url = None if base_url else runtime_config.get("xwsGatewayBaseUrl")
         is_gateway = bool(gateway_base_url)
         endpoint = GATEWAY_ENDPOINT if is_gateway else CHAT_COMPLETIONS_ENDPOINT
         base_url = (
             str(gateway_base_url)
             if is_gateway
-            else str(
+            else normalize_base_url(
                 base_url
                 or runtime_config.get("litellmBaseUrl")
                 or settings.litellm_base_url
@@ -213,7 +228,7 @@ class LiteLLMRouter:
                 if response.status_code >= 400:
                     body = response.text.strip()
                     last_error = (
-                        f"status={response.status_code}, model={model}, "
+                        f"status={response.status_code}, model={model}, url={base_url}{endpoint}, "
                         f"body={body or response.reason_phrase}"
                     )
                     continue
@@ -225,7 +240,7 @@ class LiteLLMRouter:
                     "usage": _normalize_usage(data.get("usage", {}), str(model)),
                 }
             except Exception as exc:
-                last_error = str(exc)
+                last_error = f"{exc} (model={model}, url={base_url}{endpoint})"
                 continue
 
         raise RuntimeError(f"LLM routing failed: {last_error}")
@@ -234,7 +249,7 @@ class LiteLLMRouter:
         headers: dict[str, str] = {}
         if auth_key:
             headers["Authorization"] = f"Bearer {auth_key}"
-        if not base_url or base_url == settings.litellm_base_url:
+        if not base_url or base_url == normalize_base_url(settings.litellm_base_url):
             return await self._client.post(endpoint, json=payload, headers=headers)
         async with httpx.AsyncClient(base_url=base_url, timeout=60.0, transport=self._transport) as client:
             return await client.post(endpoint, json=payload, headers=headers)

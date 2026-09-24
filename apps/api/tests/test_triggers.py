@@ -82,6 +82,8 @@ class WebhookReceiverTests(unittest.TestCase):
         self.assertEqual(first.json()["runId"], second.json()["runId"])
         runs = self.client.get("/projects/p1/runs", headers=self.h).json()
         self.assertEqual(len(runs), 1)
+        # The duplicate delivery must not start (or locally re-execute) the workflow again.
+        self.assertEqual(len(self.gateway.started), 1)
 
     def test_unknown_webhook_404(self) -> None:
         self.assertEqual(self.client.post("/webhooks/trg_nope", content=b"x").status_code, 404)

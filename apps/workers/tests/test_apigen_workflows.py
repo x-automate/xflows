@@ -54,7 +54,11 @@ class ApiGenTestBase(unittest.IsolatedAsyncioTestCase):
 
     def install_activity_fake(self, handler: Any) -> None:
         async def fake_activity(name: str, *args: Any, **kwargs: Any) -> Any:
-            call_args = list(args[0]) if len(args) == 1 and isinstance(args[0], list) else list(args)
+            # Activities are invoked as execute_activity(name, args=[...]) (temporalio 1.8.0).
+            if "args" in kwargs:
+                call_args = list(kwargs.pop("args"))
+            else:
+                call_args = list(args[0]) if len(args) == 1 and isinstance(args[0], list) else list(args)
             if name == "xflows.complete_run":
                 self.complete_run_calls.append((name, call_args, kwargs))
                 return {"value": {"id": call_args[0]}}

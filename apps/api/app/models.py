@@ -11,6 +11,11 @@ class WorkflowNode(BaseModel):
     y: float | None = None
     parent: str | None = None
     params: dict[str, Any] = Field(default_factory=dict)
+    # Per-node execution policy set in the editor's properties panel; the
+    # engine/worker read these (retry policy, activity timeout, onError).
+    retry: dict[str, Any] | None = None
+    timeoutS: float | None = None
+    onError: str | None = None
 
 
 class WorkflowEdge(BaseModel):
