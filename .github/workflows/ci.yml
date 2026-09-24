@@ -43,7 +43,8 @@ jobs:
       - name: Unit tests (engine)
         run: pytest packages/xflows-engine/tests -q
       - name: Unit tests (api)
-        run: python -m pytest apps/api/tests -q
+        working-directory: apps/api
+        run: python -m pytest tests -q
       - name: Unit tests (workers)
         run: pytest apps/workers/tests -q
         env:

@@ -19,6 +19,7 @@ from typing import Any
 from ..base import BaseNodeExecutor
 from ..context import NodeExecutionContext
 from ..result import NodeExecutionResult
+from ..schema_validation import parse_json_output
 
 AGENT_SYSTEM_PROMPT = (
     "You are a tool-calling agent. Respond ONLY with a JSON object.\n"
@@ -57,9 +58,11 @@ def _int_param(params: dict[str, Any], key: str, default: int, minimum: int, max
 def _usage_tokens(usage: Any) -> int:
     if not isinstance(usage, dict):
         return 0
-    prompt = usage.get("prompt_tokens") or usage.get("promptTokens") or 0
-    completion = usage.get("completion_tokens") or usage.get("completionTokens") or 0
-    total = usage.get("total_tokens") or usage.get("totalTokens")
+    # The workers' router normalizes usage to {"input", "output", "total"};
+    # raw OpenAI-style keys are still accepted.
+    prompt = usage.get("input") or usage.get("prompt_tokens") or usage.get("promptTokens") or 0
+    completion = usage.get("output") or usage.get("completion_tokens") or usage.get("completionTokens") or 0
+    total = usage.get("total") or usage.get("total_tokens") or usage.get("totalTokens")
     if total is None:
         try:
             total = int(prompt) + int(completion)
@@ -141,12 +144,11 @@ class AgentLoopExecutor(BaseNodeExecutor):
             raw = str(response.get("content", ""))
             transcript.append({"iteration": iteration, "type": "llm", "content": raw})
 
-            try:
-                envelope = json.loads(raw)
-                if not isinstance(envelope, dict):
-                    raise ValueError("not an object")
-            except (json.JSONDecodeError, ValueError) as exc:
-                transcript.append({"iteration": iteration, "type": "error", "error": f"invalid envelope: {exc}"})
+            # Tolerate ```json fences / surrounding prose around the envelope.
+            envelope, parse_error = parse_json_output(raw)
+            if parse_error or not isinstance(envelope, dict):
+                error = parse_error or "not an object"
+                transcript.append({"iteration": iteration, "type": "error", "error": f"invalid envelope: {error}"})
                 stop_reason = "invalid_envelope"
                 break
 

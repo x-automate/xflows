@@ -28,17 +28,32 @@ def _chat_options(params: dict[str, Any]) -> dict[str, Any]:
         options["stop"] = [part.strip() for part in stop.split(",") if part.strip()]
     elif isinstance(stop, list) and stop:
         options["stop"] = stop
-    # LiteLLM provider nodes carry an explicit gateway endpoint (apiBase) and
-    # optional apiKey. Forward them through the llm_chat seam so the worker's
-    # router calls THAT LiteLLM API instead of the worker default (fix:
-    # "LiteLLM provider must call a LiteLLM API, not a background ollama").
-    api_base = params.get("apiBase")
-    if isinstance(api_base, str) and api_base.strip():
-        options["base_url"] = api_base.strip()
-    api_key = params.get("apiKey")
-    if isinstance(api_key, str) and api_key.strip():
-        options["api_key"] = api_key.strip()
     return options
+
+
+# Catalog defaults the web editor used to persist into every LiteLLM node as
+# soon as any of its params was edited. A node still carrying one of these was
+# never customised, so the project's configured LiteLLM endpoint/model
+# (runtimeConfig.litellmBaseUrl / litellmModel) must win over it.
+_LEGACY_LITELLM_DEFAULTS = {
+    "apiBase": "http://litellm:4000",
+    "model": "openai/gpt-4o-mini",
+}
+
+
+def _litellm_override(
+    params: dict[str, Any],
+    key: str,
+    runtime_config: dict[str, Any],
+    runtime_key: str,
+) -> str | None:
+    value = params.get(key)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    value = value.strip()
+    if value == _LEGACY_LITELLM_DEFAULTS.get(key) and runtime_config.get(runtime_key):
+        return None
+    return value
 
 
 def _response_format(schema: dict[str, Any]) -> dict[str, Any]:
@@ -67,8 +82,9 @@ async def _chat_with_schema(
     system_prompt: str | None,
     model_hint: str | None,
     temperature: float,
+    extra_options: dict[str, Any] | None = None,
 ) -> tuple[Any, dict[str, Any]]:
-    options = _chat_options(params)
+    options = {**_chat_options(params), **(extra_options or {})}
     schema_raw = params.get("outputSchema")
     schema = parse_schema(schema_raw) if schema_raw is not None and str(schema_raw).strip() != "" else None
     if schema is not None:
@@ -156,22 +172,28 @@ class LiteLlmExecutor(BaseNodeExecutor):
     ) -> NodeExecutionResult:
         params = node.get("params", {}) or {}
         runtime_config = context.runtime_config or {}
-        model_hint = (
-            str(params.get("model"))
-            if params.get("model") is not None
-            else (
-                str(runtime_config.get("litellmModel"))
-                if runtime_config.get("litellmModel") is not None
-                else None
-            )
+        model_hint = _litellm_override(params, "model", runtime_config, "litellmModel") or (
+            str(runtime_config.get("litellmModel"))
+            if runtime_config.get("litellmModel") is not None
+            else None
         )
         temperature = float(params.get("temperature", runtime_config.get("temperature", 0.2)))
         prompt = str(input_payload.get("value", ""))
         system_prompt = (
             input_payload.get("system") if isinstance(input_payload.get("system"), str) else None
         )
+        # A LiteLLM provider node calls ITS LiteLLM API: the node's apiBase when
+        # customised, else the project's litellmBaseUrl (resolved by the router).
+        # Forwarded through the llm_chat seam as base_url/api_key overrides.
+        extra_options: dict[str, Any] = {}
+        api_base = _litellm_override(params, "apiBase", runtime_config, "litellmBaseUrl")
+        if api_base:
+            extra_options["base_url"] = api_base
+        api_key = params.get("apiKey")
+        if isinstance(api_key, str) and api_key.strip():
+            extra_options["api_key"] = api_key.strip()
         value, metadata = await _chat_with_schema(
-            context, params, prompt, system_prompt, model_hint, temperature
+            context, params, prompt, system_prompt, model_hint, temperature, extra_options
         )
-        metadata["apiBase"] = params.get("apiBase") or runtime_config.get("litellmBaseUrl")
+        metadata["apiBase"] = api_base or runtime_config.get("litellmBaseUrl")
         return NodeExecutionResult(value=value, metadata=metadata)

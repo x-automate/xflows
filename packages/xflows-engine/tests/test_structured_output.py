@@ -222,5 +222,44 @@ class LiteLlmSchemaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.metadata["schemaValidated"], True)
 
 
+class LiteLlmEndpointTests(unittest.IsolatedAsyncioTestCase):
+    """The LiteLLM provider must call the LiteLLM API the user configured."""
+
+    async def test_custom_node_api_base_is_forwarded(self) -> None:
+        context, calls = _context(runtime_config={"litellmBaseUrl": "http://project:4000"})
+        node = {"id": "n1", "componentId": "LiteLLM", "params": {"apiBase": " http://node:4000 ", "apiKey": "sk-1"}}
+        result = await LiteLlmExecutor().execute(node, {"value": "ping"}, context)
+        self.assertEqual(calls[0]["base_url"], "http://node:4000")
+        self.assertEqual(calls[0]["api_key"], "sk-1")
+        self.assertEqual(result.metadata["apiBase"], "http://node:4000")
+
+    async def test_empty_api_base_defers_to_project_config(self) -> None:
+        context, calls = _context(runtime_config={"litellmBaseUrl": "http://project:4000"})
+        node = {"id": "n1", "componentId": "LiteLLM", "params": {"apiBase": ""}}
+        result = await LiteLlmExecutor().execute(node, {"value": "ping"}, context)
+        self.assertNotIn("base_url", calls[0])
+        self.assertEqual(result.metadata["apiBase"], "http://project:4000")
+
+    async def test_persisted_catalog_defaults_do_not_override_project_config(self) -> None:
+        # The editor used to persist catalog defaults on the first param edit.
+        context, calls = _context(
+            runtime_config={"litellmBaseUrl": "http://project:4000", "litellmModel": "my-alias"}
+        )
+        node = {
+            "id": "n1",
+            "componentId": "LiteLLM",
+            "params": {"apiBase": "http://litellm:4000", "model": "openai/gpt-4o-mini", "temperature": 0.2},
+        }
+        await LiteLlmExecutor().execute(node, {"value": "ping"}, context)
+        self.assertNotIn("base_url", calls[0])
+        self.assertEqual(calls[0]["model"], "my-alias")
+
+    async def test_catalog_default_api_base_kept_without_project_config(self) -> None:
+        context, calls = _context()
+        node = {"id": "n1", "componentId": "LiteLLM", "params": {"apiBase": "http://litellm:4000"}}
+        await LiteLlmExecutor().execute(node, {"value": "ping"}, context)
+        self.assertEqual(calls[0]["base_url"], "http://litellm:4000")
+
+
 if __name__ == "__main__":
     unittest.main()

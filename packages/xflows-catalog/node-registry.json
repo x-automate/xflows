@@ -276,7 +276,8 @@
         {
           "name": "apiBase",
           "type": "text",
-          "default": "http://litellm:4000"
+          "default": "",
+          "help": "Leave empty to use the project's LiteLLM base URL (Configs tab)."
         },
         {
           "name": "max_tokens",
@@ -314,7 +315,7 @@
           "type": "text",
           "required": true,
           "default": "http://localhost:4000",
-          "help": "Base URL for LiteLLM (without /v1/chat/completions)."
+          "help": "Base URL for LiteLLM (without /v1/chat/completions), reachable from the worker container — localhost there is the worker itself."
         },
         {
           "key": "litellmModel",

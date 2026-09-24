@@ -16,7 +16,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_
 from sse_starlette.sse import EventSourceResponse
 
 from xflows_engine import NodeGraphRunner, create_default_registry, normalize_workflow_graph
-from xflows_engine.context import NodeExecutionContext, scoped_runtime_config
+from xflows_engine.context import SECRET_KEY_PATTERN, NodeExecutionContext, scoped_runtime_config
 
 from .auth import Caller, caller_dependency, require_project_access, require_role
 from .config import settings
@@ -206,7 +206,8 @@ async def run_litellm_chat(
     if auth_key:
         headers["Authorization"] = f"Bearer {auth_key}"
 
-    base_url = str(base_url or runtime_config.get("litellmBaseUrl") or settings.litellm_base_url)
+    base_url = str(base_url or runtime_config.get("litellmBaseUrl") or settings.litellm_base_url).strip().rstrip("/")
+    base_url = base_url.removesuffix("/v1")
     candidate_models = [model]
 
     last_error = "LiteLLM request failed"
@@ -239,14 +240,58 @@ async def run_litellm_chat(
                 }
             body = response.text.strip()
             last_error = (
-                f"LiteLLM chat failed (status={response.status_code}, model={candidate_model}): "
+                f"LiteLLM chat failed (status={response.status_code}, model={candidate_model}, "
+                f"url={base_url}/v1/chat/completions): "
                 f"{body or response.reason_phrase}"
             )
             break
     raise RuntimeError(last_error)
 
 
-async def execute_local_run(run: RunRecord, workflow: WorkflowRecord) -> None:
+async def _resolve_runtime_config(
+    project_id: str | None, inline: dict[str, Any] | None
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build a run's effective runtimeConfig and its redacted, persistable copy.
+
+    Project configs are the base (so trigger-fired runs and runs started from
+    another browser still get the project's LiteLLM URL/model), overlaid by the
+    caller's inline runtimeConfig. Secret-shaped project configs are stored in
+    ``project_secrets`` (fix XF-01) — for each one the caller did not supply
+    inline, a ``<key>Ref`` is added so the worker resolves it at execution time.
+    """
+    config: dict[str, Any] = {}
+    if project_id:
+        project = await store.get_project(project_id)
+        if project and isinstance(project.configs, dict):
+            config.update(project.configs)
+        for row in await store.list_project_secret_names(project_id):
+            name = str(row.get("name", ""))
+            if SECRET_KEY_PATTERN.search(name) and f"{name}Ref" not in (inline or {}):
+                config[f"{name}Ref"] = name
+    config.update(inline or {})
+    for key in [k for k in config if k.endswith("Ref") and k[:-3] in config]:
+        config.pop(key)
+    redacted = {
+        key: ("***" if SECRET_KEY_PATTERN.search(key) and not key.endswith("Ref") and value else value)
+        for key, value in config.items()
+    }
+    return config, redacted
+
+
+async def _resolve_local_secret_refs(config: dict[str, Any], project_id: str | None) -> dict[str, Any]:
+    """Local-fallback twin of the worker's ``_resolve_secret_refs``."""
+    resolved = dict(config)
+    for ref_key in [k for k, v in config.items() if k.endswith("Ref") and isinstance(v, str)]:
+        value = await store.get_project_secret(project_id, config[ref_key]) if project_id else None
+        if value is not None:
+            resolved[ref_key[:-3]] = value
+            resolved.pop(ref_key)
+    return resolved
+
+
+async def execute_local_run(
+    run: RunRecord, workflow: WorkflowRecord, runtime_config: dict[str, Any] | None = None
+) -> None:
     run.status = "running"
     run.startedAt = run.startedAt or utc_now()
     await store.update_run(run)
@@ -257,11 +302,13 @@ async def execute_local_run(run: RunRecord, workflow: WorkflowRecord) -> None:
         raw_edges = [edge.model_dump(mode="json") for edge in workflow.edges]
         nodes, edges = normalize_workflow_graph(raw_nodes, raw_edges)
         runner = NodeGraphRunner(nodes=nodes, edges=edges, user_input=run.input)
-        runtime_config = (
-            run.metadata.get("runtimeConfig", {})
-            if isinstance(run.metadata.get("runtimeConfig"), dict)
-            else {}
-        )
+        if runtime_config is None:
+            runtime_config = (
+                run.metadata.get("runtimeConfig", {})
+                if isinstance(run.metadata.get("runtimeConfig"), dict)
+                else {}
+            )
+        runtime_config = await _resolve_local_secret_refs(runtime_config, run.projectId)
 
         async def llm_chat(prompt: str, system_prompt: str | None, model_hint: str | None, temperature: float, **options: Any) -> dict[str, Any]:
             return await run_litellm_chat(
@@ -663,6 +710,23 @@ async def _create_run_impl(
     if workflow.status == "archived":
         raise HTTPException(status_code=409, detail=f"Workflow {workflow_id} is archived")
 
+    if payload.idempotencyKey:
+        # A duplicate delivery must return the original run without starting it
+        # again: re-starting would hit Temporal's duplicate workflow id, which
+        # used to fall through to the local fallback and execute a second time.
+        existing = await store.find_run_by_idempotency_key(workflow_id, payload.idempotencyKey)
+        if existing is not None:
+            return existing
+
+    project_id = project_id or (
+        str(workflow.metadata.get("projectId") or "") if isinstance(workflow.metadata, dict) else ""
+    ) or None
+    metadata = dict(payload.metadata or {})
+    inline_config = metadata.get("runtimeConfig") if isinstance(metadata.get("runtimeConfig"), dict) else {}
+    runtime_config, redacted_config = await _resolve_runtime_config(project_id, inline_config)
+    if redacted_config:
+        metadata["runtimeConfig"] = redacted_config
+
     trace_id = f"trace_{uuid4().hex[:16]}"
     run = await store.create_run(
         workflow_id,
@@ -670,15 +734,11 @@ async def _create_run_impl(
         payload.input,
         trace_id=trace_id,
         project_id=project_id,
-        metadata=payload.metadata,
+        metadata=metadata,
         idempotency_key=payload.idempotencyKey,
     )
     RUNS_CREATED.inc()
     await emit_event(run.id, "run_started", trace_id=trace_id)
-
-    runtime_config = (
-        run.metadata.get("runtimeConfig", {}) if isinstance(run.metadata, dict) else {}
-    )
     apigen_kind = str(workflow.metadata.get("apigen", "")) if isinstance(workflow.metadata, dict) else ""
     if apigen_kind in _APIGEN_RUN_WORKFLOWS:
         temporal_status = await temporal_gateway.start_workflow(
@@ -716,7 +776,7 @@ async def _create_run_impl(
         # Legacy local fallback for non-durable workflows so the test panel
         # keeps working without Temporal; alert metric tracks usage.
         FALLBACK_ACTIVATIONS.inc()
-        asyncio.create_task(execute_local_run(run, workflow))
+        asyncio.create_task(execute_local_run(run, workflow, runtime_config))
 
     return run
 

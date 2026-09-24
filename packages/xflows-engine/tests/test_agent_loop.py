@@ -226,6 +226,28 @@ class AgentLoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(loop_meta["tokensUsed"], 200)
         self.assertEqual(loop_meta["tokenCap"], 150)
 
+    async def test_token_cap_counts_router_normalized_usage(self) -> None:
+        # The workers' router returns usage as {"input", "output", "total"}.
+        envelopes = []
+        for key in ("a", "b"):
+            envelope = _tool_envelope("XWSS3", "s3", {"operation": "get", "key": key})
+            envelope["usage"] = {"input": 60, "output": 40, "total": 100}
+            envelopes.append(envelope)
+        node = _node(params={"tokenCap": 150})
+        result = await AgentLoopExecutor().execute(
+            node, {"value": "hello"}, _context(FakeChat(envelopes), FakeXwsClient())
+        )
+        loop_meta = result.metadata["agentLoop"]
+        self.assertEqual(loop_meta["stopReason"], "token_cap")
+        self.assertEqual(loop_meta["tokensUsed"], 200)
+
+    async def test_fenced_final_envelope_is_accepted(self) -> None:
+        fenced = '```json\n{"action": "final", "output": "done"}\n```'
+        chat = FakeChat([{"content": fenced, "provider": "litellm", "model": "m", "usage": {}}])
+        result = await AgentLoopExecutor().execute(_node(), {"value": "hello"}, _context(chat, FakeXwsClient()))
+        self.assertEqual(result.value, "done")
+        self.assertEqual(result.metadata["agentLoop"]["stopReason"], "final")
+
     async def test_max_iterations_bound(self) -> None:
         chat = FakeChat(
             [

@@ -87,11 +87,16 @@ For chat-family executors (`ChatLikeExecutor`, `LiteLlmExecutor`):
 2. **temperature**: `params.temperature` → `runtimeConfig["temperature"]` → `0.2`.
 3. **system prompt**: upstream `PromptTemplate` metadata `system` if present (string).
 4. **API key / base URL**: `runtimeConfig["litellmApiKey"]` → settings
-   (`LITELLM_API_KEY` → `LITELLM_MASTER_KEY`); base URL `runtimeConfig["litellmBaseUrl"]` →
-   `LITELLM_BASE_URL`.
+   (`LITELLM_API_KEY` → `LITELLM_MASTER_KEY`); base URL: LiteLLM node `params.apiBase` (when
+   non-empty) → `runtimeConfig["litellmBaseUrl"]` → `LITELLM_BASE_URL`. A trailing `/v1` is
+   stripped, and an explicit node `apiBase` bypasses `xwsGatewayBaseUrl` routing. A LiteLLM node
+   still holding the old auto-persisted catalog defaults (`apiBase: http://litellm:4000`,
+   `model: openai/gpt-4o-mini`) defers to the project's `litellmBaseUrl` / `litellmModel`.
 
-`runtimeConfig` comes from run metadata (`metadata.runtimeConfig` = the project's Configs tab
-values).
+`runtimeConfig` is resolved by the API at run creation: the project's stored configs, overlaid by
+the caller's inline `metadata.runtimeConfig`, plus a `<key>Ref` for every stored project secret
+not supplied inline (resolved by the worker at execution time). Trigger-fired runs get the same
+project config. Inline secret values are redacted (`***`) in the persisted run record.
 
 ## Model Routing (Fallback Chain)
 

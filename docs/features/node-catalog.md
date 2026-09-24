@@ -143,7 +143,7 @@ The tables below document every component exactly as declared in `node-registry.
 |---|---|---|
 | `OpenAIChat` | `model` (select: gpt-4o-mini / gpt-4o / gpt-4-turbo, default gpt-4o-mini), `temperature` (number, 0.7, step 0.1), `max_tokens` (number, 512) | Executed by `ChatLikeExecutor` |
 | `AnthropicChat` | `model` (select: claude-haiku-4-5 / claude-sonnet-4-5 / claude-opus-4), `temperature` (0.7), `max_tokens` (1024) | Executed by `ChatLikeExecutor` |
-| `LiteLLM` | `model` (text, default `openai/gpt-4o-mini`), `temperature` (0.2), `apiBase` (text, default `http://litellm:4000`) | Executed by `LiteLlmExecutor`; carries 3 required `projectConfigs` (below) |
+| `LiteLLM` | `model` (text, default `openai/gpt-4o-mini`), `temperature` (0.2), `apiBase` (text, default empty = use the project's `litellmBaseUrl`) | Executed by `LiteLlmExecutor`; carries 3 required `projectConfigs` (below) |
 
 `LLM` container itself: no params; at run time it is replaced by its promoted provider child.
 

@@ -27,6 +27,7 @@ def _capture_router(responses: list[tuple[int, dict]] | None = None):
     def handler(request: httpx.Request) -> httpx.Response:
         captured.append(
             {
+                "url": str(request.url),
                 "path": request.url.path,
                 "payload": json.loads(request.content.decode("utf-8")),
                 "headers": dict(request.headers),
@@ -146,6 +147,37 @@ class GatewayRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(captured[0]["path"], CHAT_COMPLETIONS_ENDPOINT)
         self.assertEqual(captured[0]["payload"]["model"], "azure/gpt-4o")
         self.assertEqual(captured[0]["headers"].get("authorization"), "Bearer sk-1234")
+        self.assertEqual(captured[0]["url"], "http://10.90.115.195:4000/v1/chat/completions")
+
+    async def test_node_base_url_with_v1_suffix_is_not_doubled(self) -> None:
+        router, captured = _capture_router()
+        await router.chat("hello", model_hint="m", base_url="http://my-litellm:4000/v1/")
+        self.assertEqual(captured[0]["url"], "http://my-litellm:4000/v1/chat/completions")
+
+    async def test_project_base_url_used_when_node_has_none(self) -> None:
+        router, captured = _capture_router()
+        await router.chat(
+            "hello",
+            model_hint="m",
+            runtime_config={"litellmBaseUrl": "http://project-litellm:4000"},
+        )
+        self.assertEqual(captured[0]["url"], "http://project-litellm:4000/v1/chat/completions")
+
+    async def test_node_base_url_bypasses_xws_gateway(self) -> None:
+        router, captured = _capture_router()
+        result = await router.chat(
+            "hello",
+            model_hint="m",
+            base_url="http://my-litellm:4000",
+            runtime_config={"xwsGatewayBaseUrl": "http://xws-gateway:9000"},
+        )
+        self.assertEqual(captured[0]["url"], "http://my-litellm:4000/v1/chat/completions")
+        self.assertNotEqual(result["provider"], "xws-gateway")
+
+    async def test_routing_error_names_the_url(self) -> None:
+        router, _ = _capture_router([(404, {"error": "nope"})])
+        with self.assertRaisesRegex(RuntimeError, "url=http://my-litellm:4000/v1/chat/completions"):
+            await router.chat("hello", model_hint="m", base_url="http://my-litellm:4000")
 
 
 class UsageHelperTests(unittest.TestCase):
