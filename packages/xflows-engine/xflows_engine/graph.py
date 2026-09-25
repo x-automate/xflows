@@ -231,4 +231,10 @@ class NodeGraphRunner:
 
     def resolve_output_node_id(self, order: list[str]) -> str:
         output_node = next((node for node in self.nodes if node.get("componentId") == "Output"), None)
-        return output_node["id"] if output_node else order[-1]
+        if output_node:
+            return output_node["id"]
+        if not order:
+            # An empty graph used to surface as a bare "list index out of range"
+            # in the run record; say what actually went wrong instead.
+            raise ValueError("Workflow has no nodes to execute; add an Input and an Output node")
+        return order[-1]

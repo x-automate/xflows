@@ -3,6 +3,7 @@ import {
   CATEGORY_COLORS,
   STATUS_META,
   XFLOWS_CATALOG,
+  XFLOWS_ICONS,
   getComponentMeta,
   getRequiredProjectConfigs,
   isPlaceable,
@@ -22,6 +23,16 @@ describe("catalog registry", () => {
   it("keeps category colors aligned with used categories", () => {
     for (const component of XFLOWS_CATALOG) {
       expect(CATEGORY_COLORS[component.category], `${component.id} missing color`).toBeDefined();
+    }
+  });
+
+  it("gives every component an icon that exists", () => {
+    for (const component of XFLOWS_CATALOG) {
+      expect(component.icon, `${component.id} declares no icon`).toBeDefined();
+      expect(
+        XFLOWS_ICONS[component.icon],
+        `${component.id} references unknown icon "${component.icon}"`
+      ).toBeDefined();
     }
   });
 
