@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:4173,http://127.0.0.1:4173"
     database_url: str = "postgresql://postgres:postgres@postgres:5432/xflows"
     redis_url: str = "redis://redis:6379/0"
+    # Postgres is often still starting when the API boots (or its DNS name is not
+    # resolvable yet). Retry for roughly db_connect_max_attempts * backoff before
+    # giving up, so ordinary startup races do not need a container restart.
+    db_connect_max_attempts: int = 5
+    db_connect_backoff_s: float = 1.0
     persistence_mode: str = "postgres"
     persistence_reads_from_sql: bool = True
     schema_auto_migrate: bool = True

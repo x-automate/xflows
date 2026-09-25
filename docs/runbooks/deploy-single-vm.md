@@ -61,14 +61,43 @@ docker compose logs api --tail=100
 docker compose logs worker --tail=100
 ```
 
-## 5) Operational notes
+## 5) Troubleshooting startup
+
+### `Cannot reach Postgres at <host>:5432/<db>`
+
+The API refuses to start without its database — it will not silently fall back
+to in-memory, because that would look healthy while losing every write. The
+message names the host it tried and what to change; the DSN is printed as
+`host:port/database`, never with credentials.
+
+It retries first (`DB_CONNECT_MAX_ATTEMPTS` × `DB_CONNECT_BACKOFF_S`, ≈15 s by
+default), so an ordinary startup race resolves itself. Bad credentials and a
+missing database fail immediately instead, since no amount of waiting fixes them.
+
+| Message says | Cause | Fix |
+|---|---|---|
+| *the host name `postgres` does not resolve* | The API is not on the same compose network as the database. | Start both together: `docker compose --profile core up`. Running the API on its own — a bare `uvicorn`, or `docker run` without the compose network — cannot resolve `postgres`. |
+| *the host name … does not resolve* (an external host) | Typo, or the container has no DNS route to a managed database. | Check `DATABASE_URL`, and that the VM can reach the database's network. |
+| *the host resolved but refused the connection* | Postgres is not accepting connections, or the port is wrong. | `docker compose ps postgres`, then check the port in `DATABASE_URL`. |
+| *the server rejected the credentials* | `.env` no longer matches the database. | An existing `postgres_data` volume keeps the credentials it was **initialised** with; changing `.env` afterwards does not update them. Either restore the original values or recreate the volume. |
+
+Running the API **outside** compose against the compose database: keep the
+database's published port and point at it directly —
+`DATABASE_URL=postgresql://xflows:xflows_dev_password@localhost:5432/xflows`.
+For a throwaway instance with no database at all, `PERSISTENCE_MODE=memory`
+starts the API with an in-memory store (nothing survives a restart).
+
+Note that `.env.example` ships `DATABASE_URL=…@postgres:5432/…`, which is
+correct **inside** compose and unresolvable outside it.
+
+## 6) Operational notes
 
 - If Temporal is not ready yet, API falls back to local run simulation for startup continuity.
 - Configure provider models and keys in LiteLLM before load testing.
 - API persistence now uses Postgres as source of truth and Redis for idempotency/cache acceleration.
 - `PERSISTENCE_MODE=dual` can be used for migration verification before full SQL cutover.
 
-## 6) Backup and retention
+## 7) Backup and retention
 
 - **Postgres backups**: run daily `pg_dump` for the `xflows` database and keep at least 7 snapshots.
 - **Restore drill**: rehearse monthly restore to a staging VM and verify `/projects` and `/runs/{id}` endpoints.

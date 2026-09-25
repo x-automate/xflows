@@ -24,6 +24,8 @@ at build time. Defaults below match the code; deployment defaults are in
 | `PERSISTENCE_MODE` | `postgres` | `memory` \| `postgres` \| `dual` |
 | `PERSISTENCE_READS_FROM_SQL` | `true` | used by `dual` mode |
 | `SCHEMA_AUTO_MIGRATE` | `true` | apply embedded schema on startup |
+| `DB_CONNECT_MAX_ATTEMPTS` | `5` | connection attempts before startup aborts |
+| `DB_CONNECT_BACKOFF_S` | `1.0` | first retry delay; doubles each attempt (≈15 s total at the defaults) |
 | `CACHE_TTL_SECONDS` | `30` | Redis cache TTL |
 | `IDEMPOTENCY_TTL_SECONDS` | `86400` | idempotency key lifetime (24 h) |
 
