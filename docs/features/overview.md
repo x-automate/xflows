@@ -14,7 +14,7 @@ This page maps every user-facing feature of XFlows and links to its deep-dive pa
 | | Steps pane: Properties / Steps / Test / Validation tabs | `components/StepsPane.jsx` | [Editor](workflow-editor.md#steps-pane) |
 | | Validation: acyclic, one Input/Output, port rules, provider containment, slot compatibility | `hooks/useWorkflowValidation.js` | [Editor](workflow-editor.md#validation) |
 | | Undo/redo + keyboard shortcuts + duplicate/delete + clear all + JSON export/import | `features/workflow/AppShell.jsx` | [Editor](workflow-editor.md#history-and-shortcuts), [import/export](workflow-editor.md#json-importexport) |
-| **Node catalog** | 36 components across 14 categories, driven by `node-registry.json` (params, defaults, config slots, project configs) | `catalog/node-registry.json` | [Node catalog](node-catalog.md) |
+| **Node catalog** | 41 components across 14 categories, driven by `node-registry.json` (params, defaults, config slots, project configs) | `packages/xflows-catalog/node-registry.json` | [Node catalog](node-catalog.md) |
 | **Configs** | Dynamic credential/config form derived from nodes in the flow; saved as project `configs`; passed to runs as `metadata.runtimeConfig` | `src/pages/ProjectConfigs.jsx` | [Projects & configs](projects-configs-triggers.md#configs-tab) |
 | **Triggers** | Time-based trigger table (enabled, queue, time, timezone); syncs to `POST/PATCH /projects/:id/triggers` | `src/pages/ProjectTriggers.jsx` | [Triggers](projects-configs-triggers.md#trigger-tab) |
 | **Runs** | Editor Test tab: start run, live trace log, per-node durations, final output | `AppShell.jsx` (TestPanel) | [Runs](runs.md#test-runs-from-the-editor) |

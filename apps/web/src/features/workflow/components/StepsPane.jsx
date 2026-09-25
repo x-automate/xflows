@@ -16,10 +16,9 @@ function StepsPane({
 }) {
   const validation = useWorkflowValidation(nodes, edges);
   const [tab, setTab] = useState("properties");
-  const selectedNode =
-    selected && !String(selected).startsWith("e_")
-      ? nodes.find((node) => node.id === selected)
-      : null;
+  const selectedNode = selected
+    ? nodes.find((node) => node.id === selected) || null
+    : null;
 
   useEffect(() => {
     if (selectedNode) setTab("properties");
@@ -274,6 +273,50 @@ function TestPanel({
                   <span className="wf-trace-icon err">✕</span>
                   <span className="wf-trace-name">{name}</span>
                   <span className="wf-trace-msg err">{event.error || "failed"}</span>
+                </div>
+              );
+            }
+            if (event.type === "skipped") {
+              return (
+                <div key={idx} className="wf-trace-row">
+                  <span className="wf-trace-icon skip">⊘</span>
+                  <span className="wf-trace-name">{name}</span>
+                  <span className="wf-trace-msg">skipped - branch not taken</span>
+                </div>
+              );
+            }
+            if (event.type === "routed") {
+              return (
+                <div key={idx} className="wf-trace-row">
+                  <span className="wf-trace-icon err">↳</span>
+                  <span className="wf-trace-name">{name}</span>
+                  <span className="wf-trace-msg err">
+                    failed - routed to error branch
+                  </span>
+                  {event.error && <div className="wf-trace-output">{String(event.error)}</div>}
+                </div>
+              );
+            }
+            if (event.type === "awaiting") {
+              return (
+                <div key={idx} className="wf-trace-row">
+                  <span className="wf-trace-icon wait">⏸</span>
+                  <span className="wf-trace-name">{name}</span>
+                  <span className="wf-trace-msg">waiting for review</span>
+                  {event.summary && (
+                    <div className="wf-trace-output">{String(event.summary)}</div>
+                  )}
+                </div>
+              );
+            }
+            if (event.type === "signal") {
+              return (
+                <div key={idx} className="wf-trace-row">
+                  <span className="wf-trace-icon ok">✎</span>
+                  <span className="wf-trace-name">{name}</span>
+                  <span className="wf-trace-msg">
+                    {event.decision ? `review: ${event.decision}` : "signal received"}
+                  </span>
                 </div>
               );
             }

@@ -6,10 +6,18 @@ import {
   isPlaceable,
 } from "../catalog/catalog-meta";
 
+function matchesQuery(component, query) {
+  if (!query) return true;
+  const needle = query.toLowerCase();
+  return [component.name, component.id, component.category, component.desc].some(
+    (field) => String(field || "").toLowerCase().includes(needle)
+  );
+}
+
 function ComponentPanel({ onAddNode, query, setQuery }) {
   const categories = {};
   for (const component of XFLOWS_CATALOG) {
-    if (query && !component.name.toLowerCase().includes(query.toLowerCase())) continue;
+    if (!matchesQuery(component, query)) continue;
     categories[component.category] = categories[component.category] || [];
     categories[component.category].push(component);
   }

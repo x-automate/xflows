@@ -8,6 +8,7 @@ import {
 } from "../../lib/api/workflowApi";
 import { getProject, updateProjectGraph } from "../../lib/projectStore";
 import { getComponentMeta } from "./catalog/catalog-meta";
+import { checkConnection } from "./catalog/connection-rules";
 import { getUnsupportedComponents } from "./catalog/execution-map";
 import { useWorkflowValidation } from "./hooks/useWorkflowValidation";
 import Canvas from "./components/Canvas";
@@ -189,15 +190,9 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
 
   const connect = (source, target, kind = "data", slot) => {
     if (readOnly) return;
-    if (
-      edges.some(
-        (edge) =>
-          edge.source === source &&
-          edge.target === target &&
-          (edge.kind || "data") === kind &&
-          edge.slot === slot
-      )
-    ) {
+    const check = checkConnection({ nodes, edges, source, target, kind, slot });
+    if (!check.ok) {
+      flash(check.reason, "err");
       return;
     }
     const edge = { id: `e_${uid()}`, source, target, kind };
@@ -230,7 +225,7 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
   const deleteSelected = useCallback(() => {
     if (readOnly) return;
     if (!selected) return;
-    if (selected.startsWith("e_")) {
+    if (edges.some((edge) => edge.id === selected)) {
       commit({ nodes, edges: edges.filter((edge) => edge.id !== selected) });
     } else {
       const toRemove = new Set([
@@ -249,7 +244,7 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
 
   const duplicateSelected = () => {
     if (readOnly) return;
-    if (!selected || selected.startsWith("e_")) return;
+    if (!selected) return;
     const node = nodes.find((item) => item.id === selected);
     if (!node) return;
     const copy = {
@@ -351,6 +346,20 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
         error: eventPayload.payload?.error ?? null,
       };
     }
+    if (eventPayload.type === "run_awaiting_review") {
+      return {
+        type: "awaiting",
+        nodeId: eventPayload.nodeId,
+        summary: eventPayload.payload?.summary ?? null,
+      };
+    }
+    if (eventPayload.type === "signal_received") {
+      return {
+        type: "signal",
+        nodeId: eventPayload.nodeId,
+        decision: eventPayload.payload?.decision ?? null,
+      };
+    }
     return null;
   };
 
@@ -397,6 +406,10 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
         next.runStatus = { ...previous.runStatus, [event.nodeId]: "skipped" };
       } else if (event.type === "routed") {
         next.runStatus = { ...previous.runStatus, [event.nodeId]: "routed" };
+      } else if (event.type === "awaiting") {
+        next.runStatus = { ...previous.runStatus, [event.nodeId]: "awaiting" };
+      } else if (event.type === "signal") {
+        next.runStatus = { ...previous.runStatus, [event.nodeId]: "running" };
       }
       return next;
     });

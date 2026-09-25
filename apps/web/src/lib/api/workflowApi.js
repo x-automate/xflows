@@ -110,6 +110,23 @@ export async function updateProjectTrigger(projectId, triggerId, payload) {
   return parseResponse(response);
 }
 
+// The API sends every run event as a *named* SSE event (`event: <type>`), so
+// `onmessage` never fires for them and each type has to be subscribed by name.
+// Keep this in sync with RunEvent.type in apps/api/app/models.py — a type
+// missing here is silently dropped on the floor.
+export const RUN_EVENT_TYPES = [
+  "run_started",
+  "node_started",
+  "node_succeeded",
+  "node_failed",
+  "node_skipped",
+  "node_routed_to_error",
+  "run_awaiting_review",
+  "signal_received",
+  "run_succeeded",
+  "run_failed",
+];
+
 export function streamRunEvents(runId, onEvent) {
   const source = new EventSource(`${API_BASE_URL}/runs/${runId}/events`);
   const handleEvent = (event) => {
@@ -120,14 +137,7 @@ export function streamRunEvents(runId, onEvent) {
     }
   };
   source.onmessage = handleEvent;
-  [
-    "run_started",
-    "node_started",
-    "node_succeeded",
-    "node_failed",
-    "run_succeeded",
-    "run_failed",
-  ].forEach((eventType) => source.addEventListener(eventType, handleEvent));
+  RUN_EVENT_TYPES.forEach((eventType) => source.addEventListener(eventType, handleEvent));
   source.onerror = () => {
     source.close();
   };

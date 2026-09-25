@@ -12,6 +12,13 @@ const CONT_H = 110;
 const PORT_SIZE = 10;
 const CONFIG_PORT_SIZE = 9;
 const PORT_OVERHANG = 6;
+// The rendered dot sits `PORT_OVERHANG` outside the node edge and is
+// `PORT_SIZE` across, so its centre is 1px beyond the edge. Wire endpoints
+// use the same number, otherwise an edge visibly misses its own port.
+const PORT_CENTER = PORT_OVERHANG - PORT_SIZE / 2;
+// Vertical drop of the error port below the data port; must match
+// `.wf-port-error-out { top: calc(50% + ERROR_PORT_DROP) }` in workflow.css.
+const ERROR_PORT_DROP = 20;
 
 function sizeFor(meta) {
   if (meta?.kind === "container") return { w: CONT_W, h: CONT_H };
@@ -148,22 +155,28 @@ function Canvas({
 
   const dataPortPos = (node, side) => {
     const size = sizeFor(metaOf(node));
-    return { x: node.x + (side === "in" ? 0 : size.w), y: node.y + size.h / 2 };
+    const x =
+      side === "in" ? node.x - PORT_CENTER : node.x + size.w + PORT_CENTER;
+    return { x, y: node.y + size.h / 2 };
   };
 
   const configOutPortPos = (node) => {
     const size = sizeFor(metaOf(node));
     return {
       x: node.x + size.w / 2,
-      y: node.y - PORT_OVERHANG + PORT_SIZE / 2,
+      y: node.y - PORT_CENTER,
     };
   };
 
-  // y offset must match `.wf-port-error-out { top: calc(50% + 11px) }` in workflow.css,
-  // otherwise the drawn edge starts several px away from the port it claims to leave.
+  // y offset must match `.wf-port-error-out { top: calc(50% + ERROR_PORT_DROP) }` in
+  // workflow.css, otherwise the drawn edge starts several px away from the port it
+  // claims to leave.
   const errorOutPortPos = (node) => {
     const size = sizeFor(metaOf(node));
-    return { x: node.x + size.w + PORT_OVERHANG - PORT_SIZE / 2, y: node.y + size.h / 2 + 11 };
+    return {
+      x: node.x + size.w + PORT_CENTER,
+      y: node.y + size.h / 2 + ERROR_PORT_DROP,
+    };
   };
 
   const configPortPos = (node, slotIdx, totalSlots) => {
@@ -175,6 +188,13 @@ function Canvas({
     };
   };
 
+  const portPosFor = (node, kind) =>
+    kind === "config"
+      ? configOutPortPos(node)
+      : kind === "error"
+        ? errorOutPortPos(node)
+        : dataPortPos(node, "out");
+
   const edgePath = (a, b, vertical = false) => {
     if (vertical) {
       const dy = Math.max(30, Math.abs(b.y - a.y) * 0.5);
@@ -185,46 +205,10 @@ function Canvas({
     return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`;
   };
 
-  const startDataWire = (event, nodeId) => {
+  const startWire = (event, nodeId, kind) => {
     event.stopPropagation();
-    const node = nodeById[nodeId];
-    const p = dataPortPos(node, "out");
-    setPendingWire({
-      from: nodeId,
-      kind: "data",
-      sx: p.x,
-      sy: p.y,
-      tx: p.x,
-      ty: p.y,
-    });
-  };
-
-  const startErrorWire = (event, nodeId) => {
-    event.stopPropagation();
-    const node = nodeById[nodeId];
-    const p = errorOutPortPos(node);
-    setPendingWire({
-      from: nodeId,
-      kind: "error",
-      sx: p.x,
-      sy: p.y,
-      tx: p.x,
-      ty: p.y,
-    });
-  };
-
-  const startConfigWire = (event, nodeId) => {
-    event.stopPropagation();
-    const node = nodeById[nodeId];
-    const p = configOutPortPos(node);
-    setPendingWire({
-      from: nodeId,
-      kind: "config",
-      sx: p.x,
-      sy: p.y,
-      tx: p.x,
-      ty: p.y,
-    });
+    const p = portPosFor(nodeById[nodeId], kind);
+    setPendingWire({ from: nodeId, kind, sx: p.x, sy: p.y, tx: p.x, ty: p.y });
   };
 
   return (
@@ -398,6 +382,9 @@ function Canvas({
                           </span>
                         )}
                         {status === "error" && <span className="wf-run-mini err">failed</span>}
+                        {status === "skipped" && (
+                          <span className="wf-run-mini skip">skipped</span>
+                        )}
                         {!status && (
                           <span className="wf-node-cat" style={{ color: color.fg }}>
                             {meta.category}
@@ -474,7 +461,8 @@ function Canvas({
                     className="wf-port wf-port-out"
                     data-port="out"
                     data-node-id={node.id}
-                    onMouseDown={(event) => startDataWire(event, node.id)}
+                    onMouseDown={(event) => startWire(event, node.id, "data")}
+                    title="Data output - the normal result of this node"
                   />
                 )}
                 {meta.kind !== "output" && meta.kind !== "input" && (
@@ -482,7 +470,7 @@ function Canvas({
                     className="wf-port wf-port-error-out"
                     data-port="error-out"
                     data-node-id={node.id}
-                    onMouseDown={(event) => startErrorWire(event, node.id)}
+                    onMouseDown={(event) => startWire(event, node.id, "error")}
                     title="Error output - connect to a node that should run when this node fails"
                   />
                 )}
@@ -493,7 +481,7 @@ function Canvas({
                     className="wf-port wf-port-config-out"
                     data-port="config-out"
                     data-node-id={node.id}
-                    onMouseDown={(event) => startConfigWire(event, node.id)}
+                    onMouseDown={(event) => startWire(event, node.id, "config")}
                   />
                 )}
                 {configs.map((slot, idx) => {

@@ -21,15 +21,17 @@ to any section below.
 | | [Observability & evaluation](architecture/observability-evaluation.md) — trace model, metrics, SLOs |
 | **Features** | [Feature map & user journeys](features/overview.md) |
 | | [Workflow editor](features/workflow-editor.md) — canvas, nodes, edges, containers, undo/redo, validation |
-| | [Node catalog](features/node-catalog.md) — all 36 components, params, config slots |
+| | [Node catalog](features/node-catalog.md) — all 41 components, params, config slots |
 | | [Projects, configs & triggers](features/projects-configs-triggers.md) — dashboard, Configs tab, Trigger tab |
 | | [Runs](features/runs.md) — test runs, run history, live view, event streaming |
+| | [Navigation redesign](features/navigation-redesign.md) — *proposal*: restructuring the tab hierarchy |
 | **Reference** | [REST API reference](reference/api-reference.md) — every endpoint with payloads |
 | | [Run events](reference/run-events.md) — event contract + SSE protocol |
 | | [Data model](reference/data-model.md) — entities, Postgres schema, store modes, caching, idempotency |
 | | [Node execution engine](reference/node-execution.md) — normalization, dispatch, executors, model routing |
 | | [Configuration](reference/configuration.md) — every environment variable per service |
 | | [Workflow spec](reference/workflow-spec.md) — JSON schema, TS types, versioning rules |
+| | [Platform audit](reference/platform-audit.md) — node-by-node status, connection rules, known gaps |
 | **Operations** | [Deployment (Docker Compose)](deployment/docker-compose.md) — profiles, services, ports, healthchecks |
 | | [Deploy on a single VM](runbooks/deploy-single-vm.md) — step-by-step runbook |
 | | [Observability](observability.md) — metrics, alert rules, Langfuse traces, SLOs |
@@ -56,7 +58,7 @@ flowchart LR
 ```
 
 - **Author** workflows on a drag-and-drop canvas (`apps/web`), backed by a JSON node catalog
-  (`apps/web/src/features/workflow/catalog/node-registry.json`).
+  (`packages/xflows-catalog/node-registry.json`).
 - **Execute** them via the API (`apps/api`), which starts Temporal workflows on the
   `xflows-workflows` task queue. If Temporal is unavailable, the API runs the same node engine
   locally so the test panel always shows real output.

@@ -37,10 +37,37 @@ Implemented in `components/Canvas.jsx`.
     at any pan/zoom.
 - **Edges** are cubic-bezier SVG paths:
   - **Data edges** (default `kind: "data"`): left-in → right-out, black arrow marker.
+  - **Error edges** (`kind: "error"`): from the red `error-out` port on the node's lower right
+    to a target's data-in, red (`#dc2626`) and dashed. Taken when the source node raises. The
+    payload delivered is `{"value": "", "error": {message, nodeId, componentId}}` — note the
+    blank `value`.
   - **Config edges**: aux node → container slot, orange (`#c2410c`) vertical bezier, labeled by
-    slot name. Config edges are metadata for the designer; the backend executes only data edges.
+    slot name. Config edges are metadata for the designer; the backend executes only data and
+    error edges (`normalize_workflow_graph` drops config edges).
   - A pending wire renders as a dashed live path while you drag.
-  - Duplicate edges are prevented; edges can be selected and deleted (ids starting with `e_`).
+  - Edges can be selected and deleted, and a data/error edge can be re-typed or given a `when`
+    predicate in the edge editor popover.
+
+### Connection rules
+
+`catalog/connection-rules.js` gates every connection **before** the edge is created; a refused
+connection flashes the reason as a toast and nothing is drawn. `checkConnection` refuses:
+
+| Rule | Applies to |
+|---|---|
+| target is an `input`-kind node | data, error |
+| source is an `output`-kind node | data, error |
+| either end is an Observability node (they attach to config slots) | data, error |
+| either end is a nested provider (wire the container instead) | data, error, config |
+| source and target are the same node | all |
+| an identical edge already exists (same pair, kind and slot) | all |
+| the edge would close a cycle (config edges excluded) | data, error |
+| the slot does not exist on the target | config |
+| the source's category is not in the slot's `accepts` | config |
+
+`hooks/useWorkflowValidation.js` still runs the whole-graph checks (single Input/Output,
+orphan nodes, one provider per container, planned components) and reports them in the
+Validation tab — it catches graphs loaded from JSON, which never pass through the canvas gate.
 
 ## Containers and Providers
 
@@ -67,12 +94,12 @@ render as an inner chip of their container:
 
 `components/ComponentPanel.jsx`:
 
-- Search box filters by component name.
+- Search box filters by component name, id, category or description.
 - Components are grouped by category, each with its colored dot, name, and per-group count.
 - Tooltip shows the component description.
 - Double-click adds the component; drag places it precisely.
 
-See the [node catalog](node-catalog.md) for the full list of the 36 components.
+See the [node catalog](node-catalog.md) for the full list of the 41 components.
 
 ## Parameter Editing
 

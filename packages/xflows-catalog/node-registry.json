@@ -764,6 +764,7 @@
       "id": "LangfuseTracer",
       "name": "Langfuse",
       "category": "Observability",
+      "icon": "trace",
       "kind": "aux",
       "desc": "Attach Langfuse tracing config to the run.",
       "status": "partial",

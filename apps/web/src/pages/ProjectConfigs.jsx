@@ -50,8 +50,10 @@ function ProjectConfigs() {
       setError("");
       setSaved(true);
     } catch (err) {
-      setError(err.message || "Failed to sync configs with API.");
-      setSaved(true);
+      setError(
+        `${err.message || "Failed to sync configs with API."} Saved locally only — runs on the worker will not see these values.`
+      );
+      setSaved(false);
     }
   };
 

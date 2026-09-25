@@ -312,6 +312,18 @@ class EngineGraphTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "cycle"):
             runner.ordered_node_ids()
 
+    async def test_empty_graph_reports_why_instead_of_index_error(self) -> None:
+        runner = NodeGraphRunner(nodes=[], edges=[], user_input="x")
+        outputs, order, _ = await runner.run(lambda node, payload: None)
+        self.assertEqual((outputs, order), ({}, []))
+        with self.assertRaisesRegex(ValueError, "no nodes to execute"):
+            runner.resolve_output_node_id(order)
+
+    async def test_output_node_still_resolves_without_ordering(self) -> None:
+        nodes = [{"id": "out", "componentId": "Output", "params": {}}]
+        runner = NodeGraphRunner(nodes=nodes, edges=[], user_input="x")
+        self.assertEqual(runner.resolve_output_node_id([]), "out")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -105,7 +105,7 @@ python tools/evals/regression_eval.py
 |---|---|
 | New node type (end-to-end) | catalog JSON + executors + factory + tests in **both** `apps/api` and `apps/workers` — guide: [generic nodes backend](../architecture/generic-nodes-backend.md#how-to-add-a-new-node-type) |
 | New API endpoint | `apps/api/app/main.py` (+ models in `app/models.py`, store method in `app/store.py`) |
-| New project config field | `projectConfigs` entry in `apps/web/src/features/workflow/catalog/node-registry.json` |
+| New project config field | `projectConfigs` entry in `packages/xflows-catalog/node-registry.json` |
 | Model routing/fallback chain | `apps/workers/app/provider_router.py`; provider aliases in `deploy/docker/litellm_config.yaml` |
 | Alert rules | `deploy/docker/prometheus-alerts.yml` |
 | Compose changes | `deploy/docker/docker-compose.yml` (+ `.env.example`) |
