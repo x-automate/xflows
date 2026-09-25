@@ -70,9 +70,14 @@ cursors and deterministic replay (see [data model](data-model.md#tables)).
 - 404 if the run doesn't exist.
 
 Client consumption (`apps/web/src/lib/api/workflowApi.js` → `streamRunEvents`) registers
-listeners for the default channel and all six named types; malformed payloads are ignored;
-`onerror` closes; returns a cleanup function. The editor additionally polls
-`GET /runs/{runId}` every 1.2 s until a terminal status as a safety net.
+listeners for the default channel **and every named type in `RUN_EVENT_TYPES`**; malformed
+payloads are ignored; `onerror` closes; returns a cleanup function. The editor additionally
+polls `GET /runs/{runId}` every 1.2 s until a terminal status as a safety net.
+
+> Because the server always sets `event: <type>`, `EventSource.onmessage` never fires for run
+> events — every type must be subscribed **by name**. A type missing from `RUN_EVENT_TYPES` is
+> dropped silently, which is how `node_skipped` and `node_routed_to_error` went unrendered.
+> `workflowApi.test.js` pins the list against `apps/api/app/models.py`.
 
 ## Schema Validation
 
@@ -82,10 +87,18 @@ Validate any event against the JSON Schema:
 # packages/workflow-spec — draft 2020-12 schema
 # required: runId, type, timestamp; additionalProperties: false
 # type enum: run_started | node_started | node_succeeded | node_failed |
-#            run_awaiting_review | signal_received | run_succeeded | run_failed
+#            node_skipped | node_routed_to_error | run_awaiting_review |
+#            signal_received | run_succeeded | run_failed
 ```
 
-Note: the worker's Pydantic/HTTP layer mirrors the same eight types, so the schema is the
+The enum is declared in four places — `apps/api/app/models.py`, this JSON Schema,
+`packages/workflow-spec/src/types.ts` and the web client's `RUN_EVENT_TYPES`. They had drifted
+to four different lengths (10 / 8 / 6 / 6), so a real `node_skipped` event failed validation
+against its own published schema. `apps/api/tests/test_run_event_contract.py` now pins the
+first three to each other and `workflowApi.test.js` pins the fourth; treat `models.py` as the
+source and let the tests fail you if you change it alone.
+
+Note: the worker's Pydantic/HTTP layer mirrors the same types, so the schema is the
 single source of truth for both producers and consumers. TypeScript types live in
 `packages/workflow-spec/src/types.ts`. The `run-events.schema.json` enum is updated in the
 same change as the Pydantic literals — keep both in sync.

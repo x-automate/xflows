@@ -43,7 +43,7 @@ The workflow engine now uses a registry-based backend and a JSON-driven frontend
   - `apps/api/app/nodes`
   - `apps/workers/app/nodes`
 - Frontend node catalog:
-  - `apps/web/src/features/workflow/catalog/node-registry.json`
+  - `packages/xflows-catalog/node-registry.json`
 
 ### Built-in Integration Nodes
 

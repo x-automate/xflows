@@ -53,6 +53,10 @@ export interface RunEvent {
     | "node_started"
     | "node_succeeded"
     | "node_failed"
+    | "node_skipped"
+    | "node_routed_to_error"
+    | "run_awaiting_review"
+    | "signal_received"
     | "run_succeeded"
     | "run_failed";
   nodeId?: string;
