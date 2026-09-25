@@ -4,6 +4,7 @@ from .flow import IfElseExecutor, LoudFailureExecutor, SwitchExecutor, WaitExecu
 from .http import HttpRequestExecutor
 from .integrations import (
     ApiCallerExecutor,
+    ErrorLogExecutor,
     LangfuseTracerExecutor,
     LangsmithTracerExecutor,
     TraceLogExecutor,
@@ -31,6 +32,7 @@ __all__ = [
     "ApprovalExecutor",
     "ChatLikeExecutor",
     "CodegenExecutor",
+    "ErrorLogExecutor",
     "HttpRequestExecutor",
     "IfElseExecutor",
     "InputExecutor",

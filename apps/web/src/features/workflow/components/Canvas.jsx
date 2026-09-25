@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CATEGORY_COLORS,
   XFLOWS_ICONS,
+  canSourceConfigEdge,
   getComponentMeta,
 } from "../catalog/catalog-meta";
 
@@ -324,7 +325,7 @@ function Canvas({
             if (!meta) return null;
             const color = CATEGORY_COLORS[meta.category];
             const status = node.runStatus;
-            const isAux = meta.category === "Observability" || meta.id === "VectorStore";
+            const isAux = meta.kind === "aux";
             const isContainer = meta.kind === "container";
             const configs = meta.configs || [];
             const size = sizeFor(meta);
@@ -453,30 +454,35 @@ function Canvas({
                   </div>
                 )}
 
-                {meta.kind !== "input" && (
+                {/* Ports are gated on `kind`, never on category. Every node that
+                    executes offers the same two outputs — data and error — so the
+                    model is uniform: any executor can throw, triggers included.
+                    The two exceptions are structural, not stylistic: an `output`
+                    node is the terminal sink and produces nothing downstream, and
+                    an `aux` node attaches to a container's config slot rather than
+                    to the data flow. */}
+                {!isAux && meta.kind !== "input" && (
                   <div className="wf-port wf-port-in" data-port="in" data-node-id={node.id} />
                 )}
-                {meta.kind !== "output" && (
-                  <div
-                    className="wf-port wf-port-out"
-                    data-port="out"
-                    data-node-id={node.id}
-                    onMouseDown={(event) => startWire(event, node.id, "data")}
-                    title="Data output - the normal result of this node"
-                  />
+                {!isAux && meta.kind !== "output" && (
+                  <>
+                    <div
+                      className="wf-port wf-port-out"
+                      data-port="out"
+                      data-node-id={node.id}
+                      onMouseDown={(event) => startWire(event, node.id, "data")}
+                      title="Data output - the normal result of this node"
+                    />
+                    <div
+                      className="wf-port wf-port-error-out"
+                      data-port="error-out"
+                      data-node-id={node.id}
+                      onMouseDown={(event) => startWire(event, node.id, "error")}
+                      title="Error output - runs instead when this node fails"
+                    />
+                  </>
                 )}
-                {meta.kind !== "output" && meta.kind !== "input" && (
-                  <div
-                    className="wf-port wf-port-error-out"
-                    data-port="error-out"
-                    data-node-id={node.id}
-                    onMouseDown={(event) => startWire(event, node.id, "error")}
-                    title="Error output - connect to a node that should run when this node fails"
-                  />
-                )}
-                {(meta.category === "Observability" ||
-                  meta.category === "Memory" ||
-                  meta.category === "Tool") && (
+                {canSourceConfigEdge(meta) && (
                   <div
                     className="wf-port wf-port-config-out"
                     data-port="config-out"

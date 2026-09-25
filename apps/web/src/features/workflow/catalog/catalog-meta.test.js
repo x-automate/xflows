@@ -10,8 +10,8 @@ import {
 } from "./catalog-meta";
 
 describe("catalog registry", () => {
-  it("contains exactly the 41 known components", () => {
-    expect(XFLOWS_CATALOG).toHaveLength(41);
+  it("contains exactly the 42 known components", () => {
+    expect(XFLOWS_CATALOG).toHaveLength(42);
   });
 
   it("gives every component a valid status", () => {

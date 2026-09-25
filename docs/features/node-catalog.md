@@ -29,7 +29,7 @@ read from it via `catalog/catalog-meta.js`.
                             "required": true, "default": "...", "help": "..." } ],
       "backendActivity": "xflows.execute_node"
     }
-    // 41 components total
+    // 42 components total
   ]
 }
 ```
@@ -67,7 +67,7 @@ Adapter modules:
 
 | Status | Count | Components |
 |---|---|---|
-| working | 27 | Input, Output, PromptTemplate, LLM, OpenAIChat, AnthropicChat, LiteLLM, ApiCaller, IfElse, Switch, Wait, Approval, AgentLoop, SchemaValidate, Codegen, SubWorkflow, XWSS3, XWSLambdaInvoke, XWSIAMEvaluate, XWSRelayNotify, XWSGatewayLLM, XWSAudit, WebSearch, VectorStore, Webhook, XWSEventTrigger, TraceLog |
+| working | 28 | Input, Output, PromptTemplate, LLM, OpenAIChat, AnthropicChat, LiteLLM, ApiCaller, IfElse, Switch, Wait, Approval, AgentLoop, SchemaValidate, Codegen, SubWorkflow, XWSS3, XWSLambdaInvoke, XWSIAMEvaluate, XWSRelayNotify, XWSGatewayLLM, XWSAudit, WebSearch, VectorStore, Webhook, XWSEventTrigger, TraceLog, ErrorLog |
 | partial | 2 | HttpRequest (headers/body/auth ignored, XF-09), LangfuseTracer (node params not applied; run-level tracing active) |
 | planned | 12 | ReActAgent (XU-3), CodeExec, Summarizer, JsonParser, RegexExtract, Markdown, Tracer, LangsmithTracer (Wave 6), Guardrail, LoopOverItems (Wave 6), XWSDmsIntrospect, XWSApigwRegister |
 
@@ -114,7 +114,7 @@ Wave 1 control-flow semantics (XU-6):
 | Parser | cyan | JsonParser, RegexExtract |
 | Agent | rose | ReActAgent, AgentLoop |
 | Format | slate | Markdown |
-| Observability | orange | Tracer, LangfuseTracer, LangsmithTracer, Guardrail, TraceLog |
+| Observability | orange | Tracer, LangfuseTracer, LangsmithTracer, Guardrail, TraceLog, ErrorLog |
 | Trigger | blue | Webhook, XWSEventTrigger |
 | XWS | purple | XWSS3, XWSLambdaInvoke, XWSIAMEvaluate, XWSRelayNotify, XWSGatewayLLM, XWSDmsIntrospect, XWSApigwRegister, XWSAudit |
 
@@ -344,7 +344,12 @@ transcript, iterations, tokensUsed and stopReason are always attached to result 
 |---|---|
 | `Markdown` | `wrap` (select as-is/codeblock/quote/bullets, default as-is) |
 
-### Observability (aux — connect via config edges to the LLM `tracer` slot)
+### Observability
+
+`Tracer`, `LangfuseTracer`, `LangsmithTracer` and `Guardrail` are `kind: "aux"` — they have no
+data ports and attach through a config edge to the LLM container's `tracer` slot. `TraceLog` and
+`ErrorLog` share the category but are `kind: "transform"`: ordinary inline nodes with a data
+input, a data output and an error output.
 
 | id | Params | projectConfigs | Executed by |
 |---|---|---|---|
@@ -353,6 +358,7 @@ transcript, iterations, tokensUsed and stopReason are always attached to result 
 | `LangsmithTracer` | `endpoint` (default https://api.smith.langchain.com), `project` (default `xflows`), `tags` (`prod,web`) | `langsmithEndpoint`, `langsmithProject`, `langsmithApiKey` — all required | `LangsmithTracerExecutor` — passthrough + trace metadata |
 | `Guardrail` | `forbidden` (text, `password,secret`) | — | Passthrough |
 | `TraceLog` | `message` (textarea), `level` (select debug/info/warn/error, default info), `fields` (JSON text, `{}`) | — | `TraceLogExecutor` — standalone (not LLM-specific); passes input through unchanged and attaches `metadata.trace = {level, message, fields, nodeId}`. Invalid `level` normalizes to `info`; invalid `fields` JSON falls back to `{"raw": <string>}` |
+| `ErrorLog` | `level` (select debug/info/warn/error, default **error**), `message` (text prefix), `fields` (JSON text, `{}`), `includeInput` (bool, false), `rethrow` (bool, false) | — | `ErrorLogExecutor` — the terminus for a red **error edge**. Reads the `{value: "", error: {message, nodeId, componentId}}` envelope the engine delivers, attaches `metadata.errorLog` (and `metadata.trace`), and **returns the formatted message as its value** so the rest of the branch is not handed an empty string. On a plain data edge there is no envelope, so it logs the incoming value and passes it through. `rethrow: true` logs and then re-raises, so the run still fails — for branches that report rather than recover |
 
 Note: actual Langfuse span creation happens in the worker (`apps/workers/app/tracing.py`) when
 the `LANGFUSE_*` environment keys are configured; the node contributes config metadata to the

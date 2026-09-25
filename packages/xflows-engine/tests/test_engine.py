@@ -186,6 +186,98 @@ class EngineRegistryTests(unittest.IsolatedAsyncioTestCase):
         result = await registry.dispatch(node=node, input_payload={"value": ""}, context=_context())
         self.assertEqual(result["trace"]["fields"], {})
 
+    async def test_error_log_reads_the_error_envelope(self) -> None:
+        registry = create_default_registry()
+        node = {
+            "id": "n_err",
+            "componentId": "ErrorLog",
+            "params": {"message": "triage stage", "fields": '{"team": "support"}'},
+        }
+        payload = {
+            "value": "",
+            "error": {"message": "boom", "nodeId": "gate", "componentId": "IfElse"},
+        }
+        result = await registry.dispatch(node=node, input_payload=payload, context=_context())
+        entry = result["errorLog"]
+        self.assertEqual(entry["level"], "error")
+        self.assertEqual(entry["failedNodeId"], "gate")
+        self.assertEqual(entry["failedComponentId"], "IfElse")
+        self.assertEqual(entry["reason"], "boom")
+        self.assertEqual(entry["fields"], {"team": "support"})
+        # The blank value an error edge delivers is replaced by real text, so the
+        # rest of the branch has something to work with.
+        self.assertEqual(result["value"], "triage stage: IfElse (gate) failed: boom")
+
+    async def test_error_log_passes_through_on_a_data_edge(self) -> None:
+        registry = create_default_registry()
+        node = {"id": "n_err2", "componentId": "ErrorLog", "params": {}}
+        result = await registry.dispatch(
+            node=node, input_payload={"value": "nothing failed"}, context=_context()
+        )
+        self.assertEqual(result["value"], "nothing failed")
+        self.assertEqual(result["errorLog"]["message"], "nothing failed")
+        self.assertNotIn("failedNodeId", result["errorLog"])
+
+    async def test_error_log_can_include_input_and_normalizes_level(self) -> None:
+        registry = create_default_registry()
+        node = {
+            "id": "n_err3",
+            "componentId": "ErrorLog",
+            "params": {"level": "catastrophic", "includeInput": True},
+        }
+        payload = {"value": "ticket text", "error": {"message": "boom", "nodeId": "a", "componentId": "LLM"}}
+        result = await registry.dispatch(node=node, input_payload=payload, context=_context())
+        self.assertEqual(result["errorLog"]["level"], "error")
+        self.assertEqual(result["errorLog"]["input"], "ticket text")
+
+    async def test_error_log_rethrow_still_fails_the_run(self) -> None:
+        registry = create_default_registry()
+        node = {"id": "n_err4", "componentId": "ErrorLog", "params": {"rethrow": True}}
+        payload = {"value": "", "error": {"message": "boom", "nodeId": "a", "componentId": "LLM"}}
+        with self.assertRaisesRegex(RuntimeError, "boom"):
+            await registry.dispatch(node=node, input_payload=payload, context=_context())
+
+    async def test_error_log_rethrow_is_inert_without_an_error(self) -> None:
+        registry = create_default_registry()
+        node = {"id": "n_err5", "componentId": "ErrorLog", "params": {"rethrow": True}}
+        result = await registry.dispatch(
+            node=node, input_payload={"value": "fine"}, context=_context()
+        )
+        self.assertEqual(result["value"], "fine")
+
+    async def test_error_branch_through_error_log_reaches_output(self) -> None:
+        """End to end: a failure routed into ErrorLog produces real output.
+
+        Without ErrorLog the branch delivers ``value: ""`` and Output renders
+        nothing, which is what made error branches look broken.
+        """
+        nodes = [
+            {"id": "in", "componentId": "Input", "params": {}},
+            {"id": "gate", "componentId": "IfElse", "params": {"contains": "refund", "mode": "fail"}},
+            {"id": "log", "componentId": "ErrorLog", "params": {}},
+            {"id": "out", "componentId": "Output", "params": {}},
+        ]
+        edges = [
+            {"id": "e1", "source": "in", "target": "gate", "kind": "data"},
+            {"id": "e2", "source": "gate", "target": "out", "kind": "data"},
+            {"id": "e3", "source": "gate", "target": "log", "kind": "error"},
+            {"id": "e4", "source": "log", "target": "out", "kind": "data"},
+        ]
+        registry = create_default_registry()
+        normalized_nodes, normalized_edges = normalize_workflow_graph(nodes, edges)
+        runner = NodeGraphRunner(
+            nodes=normalized_nodes, edges=normalized_edges, user_input="order never arrived"
+        )
+
+        async def execute(node: dict, input_payload: dict) -> dict:
+            return await registry.dispatch(node=node, input_payload=input_payload, context=_context())
+
+        outputs, _, statuses = await runner.run(execute)
+        self.assertEqual(statuses["gate"], "failed_routed")
+        self.assertEqual(statuses["log"], "succeeded")
+        self.assertIn("does not contain", outputs["out"]["value"])
+        self.assertEqual(outputs["log"]["errorLog"]["failedComponentId"], "IfElse")
+
 
 class EngineGraphTests(unittest.IsolatedAsyncioTestCase):
     async def test_runner_executes_normalized_graph(self) -> None:
