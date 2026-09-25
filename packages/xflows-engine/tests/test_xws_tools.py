@@ -289,10 +289,39 @@ class InertExecutorTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(NotImplementedError):
             await XWSApigwRegisterExecutor().execute(node, {"value": "x"}, _context(None))
 
-    async def test_audit_inert(self) -> None:
+
+class XWSAuditTests(unittest.IsolatedAsyncioTestCase):
+    async def test_append_posts_events_append(self) -> None:
+        client = FakeXwsClient(responses=[{"id": "evt-1", "seq": 42}])
+        node = _node("XWSAudit", action="xws:Test", resource="arn:xws:test:::x", result="denied")
+        result = await XWSAuditExecutor().execute(node, {"value": "payload"}, _context(client))
+
+        self.assertEqual(result.value, "evt-1")
+        self.assertEqual(result.metadata["xwsTool"], "XWSAudit")
+        self.assertEqual(client.calls[0]["method"], "POST")
+        self.assertEqual(client.calls[0]["path"], "/events/append")
+        self.assertEqual(client.calls[0]["tool_class"], "audit")
+        self.assertEqual(client.calls[0]["json_body"]["action"], "xws:Test")
+        self.assertEqual(client.calls[0]["json_body"]["resource"], "arn:xws:test:::x")
+        self.assertEqual(client.calls[0]["json_body"]["result"], "denied")
+
+    async def test_defaults_action_and_resource(self) -> None:
+        client = FakeXwsClient(responses=[{"id": "evt-2"}])
         node = _node("XWSAudit")
-        with self.assertRaises(NotImplementedError):
-            await XWSAuditExecutor().execute(node, {"value": "x"}, _context(None))
+        await XWSAuditExecutor().execute(node, {"value": "payload"}, _context(client))
+
+        body = client.calls[0]["json_body"]
+        self.assertEqual(body["action"], "xflows:AuditEvent")
+        self.assertEqual(body["resource"], "arn:xws:xflows:::run/run_1")
+        self.assertEqual(body["result"], "success")
+        self.assertEqual(body["params"], {"value": "payload"})
+
+    async def test_details_param_passed_through(self) -> None:
+        client = FakeXwsClient(responses=[{"id": "evt-3"}])
+        node = _node("XWSAudit", details={"foo": "bar"})
+        await XWSAuditExecutor().execute(node, {"value": "payload"}, _context(client))
+
+        self.assertEqual(client.calls[0]["json_body"]["params"], {"foo": "bar"})
 
 
 class GatewayLLMTests(unittest.IsolatedAsyncioTestCase):

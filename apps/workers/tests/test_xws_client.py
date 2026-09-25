@@ -151,6 +151,8 @@ class ClientAllowlistTests(unittest.TestCase):
         self.assertIn(("POST", "/lambda/invoke"), TOOL_CLASS_ROUTES["lambda"])
         self.assertIn(("GET", "/dms/"), TOOL_CLASS_ROUTES["dms-ro"])
         self.assertIn(("POST", "/relay/notify"), TOOL_CLASS_ROUTES["relay"])
+        # audit-svc's real route is /events/append — /audit/append never existed there.
+        self.assertIn(("POST", "/events/append"), TOOL_CLASS_ROUTES["audit"])
 
 
 class ClientSignedRequestTests(unittest.TestCase):

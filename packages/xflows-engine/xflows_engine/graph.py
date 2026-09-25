@@ -129,6 +129,7 @@ class NodeGraphRunner:
     nodes: list[dict[str, Any]]
     edges: list[dict[str, Any]]
     user_input: str
+    entry_node_id: str | None = None
 
     def ordered_node_ids(self) -> list[str]:
         return topo_sort(self.nodes, self.edges)
@@ -192,7 +193,12 @@ class NodeGraphRunner:
                 if incoming_count.get(node_id, 0) > 0:
                     statuses[node_id] = "skipped"
                     return
-                deliveries = [(0, None, {"value": self.user_input})]
+                value = (
+                    self.user_input
+                    if self.entry_node_id is None or node_id == self.entry_node_id
+                    else ""
+                )
+                deliveries = [(0, None, {"value": value})]
             deliveries.sort(key=lambda item: item[0])
             input_payload = _assemble_payload(deliveries)
             try:

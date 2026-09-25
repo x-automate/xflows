@@ -29,7 +29,7 @@ read from it via `catalog/catalog-meta.js`.
                             "required": true, "default": "...", "help": "..." } ],
       "backendActivity": "xflows.execute_node"
     }
-    // 39 components total
+    // 41 components total
   ]
 }
 ```
@@ -67,13 +67,16 @@ Adapter modules:
 
 | Status | Count | Components |
 |---|---|---|
-| working | 23 | Input, Output, PromptTemplate, LLM, OpenAIChat, AnthropicChat, LiteLLM, ApiCaller, IfElse, Switch, Wait, Approval, AgentLoop, SchemaValidate, Codegen, SubWorkflow, XWSS3, XWSLambdaInvoke, XWSIAMEvaluate, XWSRelayNotify, XWSGatewayLLM, WebSearch, VectorStore |
+| working | 27 | Input, Output, PromptTemplate, LLM, OpenAIChat, AnthropicChat, LiteLLM, ApiCaller, IfElse, Switch, Wait, Approval, AgentLoop, SchemaValidate, Codegen, SubWorkflow, XWSS3, XWSLambdaInvoke, XWSIAMEvaluate, XWSRelayNotify, XWSGatewayLLM, XWSAudit, WebSearch, VectorStore, Webhook, XWSEventTrigger, TraceLog |
 | partial | 2 | HttpRequest (headers/body/auth ignored, XF-09), LangfuseTracer (node params not applied; run-level tracing active) |
-| planned | 14 | Webhook (XU-8), ReActAgent (XU-3), CodeExec, Summarizer, JsonParser, RegexExtract, Markdown, Tracer, LangsmithTracer (Wave 6), Guardrail, LoopOverItems (Wave 6), XWSDmsIntrospect, XWSApigwRegister, XWSAudit (XWS Wave 4+) |
+| planned | 12 | ReActAgent (XU-3), CodeExec, Summarizer, JsonParser, RegexExtract, Markdown, Tracer, LangsmithTracer (Wave 6), Guardrail, LoopOverItems (Wave 6), XWSDmsIntrospect, XWSApigwRegister |
 
-The five working XWS tools (Waves 3 + 5) execute via the SigV4-signed XWS transport with
-per-run AssumeRole credentials; the three remaining planned XWS tools are inert placeholders
-pending XWS-side capabilities (DMS introspection, API GW registration, audit trail).
+The seven working XWS tools execute via the SigV4-signed XWS transport with
+per-run AssumeRole credentials; the two remaining planned XWS tools are inert placeholders
+pending XWS-side capabilities (DMS introspection, API GW registration). `Webhook` and
+`XWSEventTrigger` (Trigger category) route a delivery's body to a specific entry node via
+`NodeGraphRunner.entry_node_id`, activated per-project through `POST /projects/{id}/triggers`
+(type `webhook` or `event`) — see the Trigger section below.
 Wave 4 added the working `Approval` HITL gate (XU-5) — see the Control section below.
 Wave 5 added the working `SchemaValidate`, `Codegen`, and `SubWorkflow` pipeline nodes
 (XU-3/XU-6) and flipped `XWSGatewayLLM` to working (structured LLM outputs via the gateway).
@@ -111,8 +114,8 @@ Wave 1 control-flow semantics (XU-6):
 | Parser | cyan | JsonParser, RegexExtract |
 | Agent | rose | ReActAgent, AgentLoop |
 | Format | slate | Markdown |
-| Observability | orange | Tracer, LangfuseTracer, LangsmithTracer, Guardrail |
-| Trigger | blue | Webhook |
+| Observability | orange | Tracer, LangfuseTracer, LangsmithTracer, Guardrail, TraceLog |
+| Trigger | blue | Webhook, XWSEventTrigger |
 | XWS | purple | XWSS3, XWSLambdaInvoke, XWSIAMEvaluate, XWSRelayNotify, XWSGatewayLLM, XWSDmsIntrospect, XWSApigwRegister, XWSAudit |
 
 ## Component Reference
@@ -212,17 +215,26 @@ absent. `AgentLoop` reuses the same route surface for model-initiated tool calls
 | `XWSGatewayLLM` | `prompt` (textarea), `system` (textarea), `model` (text), `temperature` (number, 0.7), `maxTokens` (number, 1024), `outputSchema` (text), `toolClass` (text, `llm`) | `POST /v1/gateway/complete` with `{prompt, system, model, temperature, maxTokens, response_format}` | `XWSGatewayLLMExecutor` — working (Wave 5): strict json_schema response format when `outputSchema` is set, re-validated locally |
 | `XWSDmsIntrospect` | `toolClass` (text, `dms-ro`), `readOnly` (bool, true) | — | Planned: DMS schema introspection (read-only) |
 | `XWSApigwRegister` | `toolClass` (text, `apigw`) | — | Planned: API Gateway stage registration |
-| `XWSAudit` | `toolClass` (text, `audit`) | — | Planned: audit-trail emission |
+| `XWSAudit` | `action` (text), `resource` (text), `result` (select success/denied/error, default success), `category` (select control/data, default control), `toolClass` (text, `audit`) | `POST /events/append` with `{action, resource, result, category, params, requestId}` | `XWSAuditExecutor` — defaults `action` to `xflows:AuditEvent` and `resource` to `arn:xws:xflows:::run/{runId}` when omitted; requires the audit-svc `POST /events/append` route (IAM/SigV4-gated, alongside the existing `POST /events/verify`) |
 
-The three remaining planned XWS nodes are inert placeholders pending XWS-side capabilities
-(DMS introspection, API GW registration, audit trail); they carry `toolClass` params so
+The two remaining planned XWS nodes are inert placeholders pending XWS-side capabilities
+(DMS introspection, API GW registration); they carry `toolClass` params so
 per-role credential wiring is already declared.
 
 ### Trigger
 
+Both Trigger nodes are graph entry points (`kind: input`): the node itself is a declarative
+passthrough that echoes trigger metadata, while the actual HTTP delivery is routed to it via a
+`TriggerRecord` (created with `POST /projects/{id}/triggers`) whose `config.nodeId` names this
+node's id. `NodeGraphRunner.entry_node_id` (threaded from the trigger receiver through
+`RunRequest.entryNodeId` and the Temporal workflow's `entry_node_id` arg) then delivers the
+request body only to that node — every other zero-incoming-edge node in the graph gets `""`
+instead of the run's `user_input`, so multiple entry points on one graph do not collide.
+
 | id | Params | Executed by |
 |---|---|---|
-| `Webhook` | `path` (text, `/webhook`), `method` (select POST/PUT, default POST), `secretHeader` (text, `x-webhook-secret`) | `WebhookTriggerExecutor` — declarative passthrough; attaches trigger metadata |
+| `Webhook` | `path` (text, `/webhook`), `method` (select POST/PUT, default POST), `secretHeader` (text, `x-webhook-secret`) | `WebhookTriggerExecutor` — declarative passthrough; attaches trigger metadata. Activate with a `TriggerRecord` of type `webhook` (`config: {workflowId, nodeId, ...}`); deliveries land on `POST /webhooks/{trigger_id}`, HMAC-SHA256 verified against the trigger's auto-generated `signatureSecret` |
+| `XWSEventTrigger` | `sourceService` (text), `eventType` (text) | `XWSEventTriggerExecutor` — declarative passthrough; attaches trigger metadata. Activate with a `TriggerRecord` of type `event`; deliveries land on `POST /events/{trigger_id}`, SigV4-verified (`app/xws_sigv4.py`, a stdlib port of `xws_common.sigv4`'s verification side) against the trigger's auto-generated `accessKeyId`/`secretAccessKey` key pair — hand that pair to the calling XWS service (e.g. a `lambda-svc` `FunctionTrigger`), which signs with its own existing `xws_common` signing code |
 
 ### Memory
 
@@ -340,6 +352,7 @@ transcript, iterations, tokensUsed and stopReason are always attached to result 
 | `LangfuseTracer` | `host` (default https://cloud.langfuse.com), `publicKey`, `tags` (default `prod,web`) | `langfuseHost`, `langfusePublicKey`, `langfuseSecretKey` — all required | `LangfuseTracerExecutor` — passthrough + trace metadata |
 | `LangsmithTracer` | `endpoint` (default https://api.smith.langchain.com), `project` (default `xflows`), `tags` (`prod,web`) | `langsmithEndpoint`, `langsmithProject`, `langsmithApiKey` — all required | `LangsmithTracerExecutor` — passthrough + trace metadata |
 | `Guardrail` | `forbidden` (text, `password,secret`) | — | Passthrough |
+| `TraceLog` | `message` (textarea), `level` (select debug/info/warn/error, default info), `fields` (JSON text, `{}`) | — | `TraceLogExecutor` — standalone (not LLM-specific); passes input through unchanged and attaches `metadata.trace = {level, message, fields, nodeId}`. Invalid `level` normalizes to `info`; invalid `fields` JSON falls back to `{"raw": <string>}` |
 
 Note: actual Langfuse span creation happens in the worker (`apps/workers/app/tracing.py`) when
 the `LANGFUSE_*` environment keys are configured; the node contributes config metadata to the

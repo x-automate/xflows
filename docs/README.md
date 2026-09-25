@@ -21,7 +21,7 @@ to any section below.
 | | [Observability & evaluation](architecture/observability-evaluation.md) — trace model, metrics, SLOs |
 | **Features** | [Feature map & user journeys](features/overview.md) |
 | | [Workflow editor](features/workflow-editor.md) — canvas, nodes, edges, containers, undo/redo, validation |
-| | [Node catalog](features/node-catalog.md) — all 39 components, params, config slots |
+| | [Node catalog](features/node-catalog.md) — all 41 components, params, config slots |
 | | [Projects, configs & triggers](features/projects-configs-triggers.md) — dashboard, Configs tab, Trigger tab |
 | | [Runs](features/runs.md) — test runs, run history, live view, event streaming |
 | | [Navigation redesign](features/navigation-redesign.md) — *proposal*: restructuring the tab hierarchy |

@@ -10,8 +10,8 @@ import {
 } from "./catalog-meta";
 
 describe("catalog registry", () => {
-  it("contains exactly the 39 known components", () => {
-    expect(XFLOWS_CATALOG).toHaveLength(39);
+  it("contains exactly the 41 known components", () => {
+    expect(XFLOWS_CATALOG).toHaveLength(41);
   });
 
   it("gives every component a valid status", () => {
@@ -51,9 +51,16 @@ describe("isPlaceable", () => {
     expect(isPlaceable(getComponentMeta("HttpRequest"))).toBe(true);
   });
 
+  it("allows the trigger and audit nodes now that they are wired end to end", () => {
+    expect(isPlaceable(getComponentMeta("Webhook"))).toBe(true);
+    expect(isPlaceable(getComponentMeta("XWSEventTrigger"))).toBe(true);
+    expect(isPlaceable(getComponentMeta("XWSAudit"))).toBe(true);
+    expect(isPlaceable(getComponentMeta("TraceLog"))).toBe(true);
+  });
+
   it("rejects planned components", () => {
     expect(isPlaceable(getComponentMeta("ReActAgent"))).toBe(false);
-    expect(isPlaceable(getComponentMeta("Webhook"))).toBe(false);
+    expect(isPlaceable(getComponentMeta("CodeExec"))).toBe(false);
   });
 });
 

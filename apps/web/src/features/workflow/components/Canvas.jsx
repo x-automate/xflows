@@ -168,6 +168,9 @@ function Canvas({
     };
   };
 
+  // y offset must match `.wf-port-error-out { top: calc(50% + ERROR_PORT_DROP) }` in
+  // workflow.css, otherwise the drawn edge starts several px away from the port it
+  // claims to leave.
   const errorOutPortPos = (node) => {
     const size = sizeFor(metaOf(node));
     return {
@@ -450,10 +453,10 @@ function Canvas({
                   </div>
                 )}
 
-                {meta.kind !== "input" && meta.category !== "Observability" && (
+                {meta.kind !== "input" && (
                   <div className="wf-port wf-port-in" data-port="in" data-node-id={node.id} />
                 )}
-                {meta.kind !== "output" && meta.category !== "Observability" && (
+                {meta.kind !== "output" && (
                   <div
                     className="wf-port wf-port-out"
                     data-port="out"

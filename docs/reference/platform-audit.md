@@ -12,18 +12,20 @@ Defects marked **[open]** are described with a proposed fix but not yet done.
 
 ## 1. Baseline
 
+Measured on this branch merged with `main` at `dbb6ccb`:
+
 | Suite | Result |
 |---|---|
-| `packages/xflows-engine/tests` | 155 passed |
-| `apps/api/tests` | 38 passed, 1 skipped |
+| `packages/xflows-engine/tests` | 162 passed |
+| `apps/api/tests` | 66 passed, 1 skipped |
 | `apps/workers/tests` | 140 passed |
-| `apps/web` vitest | 29 passed |
+| `apps/web` vitest | 36 passed |
 | `ruff check apps packages tools` | clean |
 | `eslint .` / `vite build` | clean |
 
 ## 2. Nodes
 
-All 39 catalog components were dispatched through the engine with their
+All 41 catalog components were dispatched through the engine with their
 declared default params (plus minimal fixtures for executors with hard-required
 params such as `XWSS3.key`). Result: **every component the editor lets you place
 executes.** Nothing placeable is inert.
@@ -45,33 +47,35 @@ The catalog's `status` field gates placement — `isPlaceable()` refuses
 | I/O | Input | `Input` | working | `InputExecutor` |
 | I/O | Output | `Output` | working | `OutputExecutor` |
 | LLM | LLM | `LLM` | working | `ChatLikeExecutor` |
-| LLM-Provider | OpenAI | `OpenAIChat` | working | `ChatLikeExecutor` |
 | LLM-Provider | Claude | `AnthropicChat` | working | `ChatLikeExecutor` |
 | LLM-Provider | LiteLLM | `LiteLLM` | working | `LiteLlmExecutor` |
-| Memory | Vector DB | `VectorStore` | working | `VectorStoreExecutor` |
+| LLM-Provider | OpenAI | `OpenAIChat` | working | `ChatLikeExecutor` |
 | Memory | Summarize | `Summarizer` | planned | none |
+| Memory | Vector DB | `VectorStore` | working | `VectorStoreExecutor` |
+| Observability | Guardrail | `Guardrail` | planned | none |
 | Observability | Langfuse | `LangfuseTracer` | partial | `LangfuseTracerExecutor` |
 | Observability | LangSmith | `LangsmithTracer` | planned | `LangsmithTracerExecutor` |
+| Observability | Trace / Log | `TraceLog` | working | `TraceLogExecutor` |
 | Observability | Tracer | `Tracer` | planned | none |
-| Observability | Guardrail | `Guardrail` | planned | none |
 | Parser | JSON | `JsonParser` | planned | none |
 | Parser | Regex | `RegexExtract` | planned | none |
 | Prompt | Prompt | `PromptTemplate` | working | `PromptTemplateExecutor` |
 | Router | If/Else | `IfElse` | working | `IfElseExecutor` |
 | Router | Switch | `Switch` | working | `SwitchExecutor` |
-| Tool | HTTP | `HttpRequest` | partial | `HttpRequestExecutor` |
 | Tool | API Caller | `ApiCaller` | working | `ApiCallerExecutor` |
-| Tool | Search | `WebSearch` | working | `WebSearchExecutor` |
 | Tool | Code | `CodeExec` | planned | none |
-| Trigger | Webhook | `Webhook` | planned | `WebhookTriggerExecutor` |
-| XWS | XWS S3 | `XWSS3` | working | `XWS3Executor` |
-| XWS | XWS Lambda | `XWSLambdaInvoke` | working | `XWSLambdaInvokeExecutor` |
-| XWS | XWS IAM | `XWSIAMEvaluate` | working | `XWSIAMEvaluateExecutor` |
-| XWS | XWS Relay | `XWSRelayNotify` | working | `XWSRelayNotifyExecutor` |
-| XWS | XWS Gateway LLM | `XWSGatewayLLM` | working | `XWSGatewayLLMExecutor` |
-| XWS | XWS DMS | `XWSDmsIntrospect` | planned | registered, raises `NotImplementedError` |
+| Tool | HTTP | `HttpRequest` | partial | `HttpRequestExecutor` |
+| Tool | Search | `WebSearch` | working | `WebSearchExecutor` |
+| Trigger | Webhook | `Webhook` | working | `WebhookTriggerExecutor` |
+| Trigger | XWS Event | `XWSEventTrigger` | working | `XWSEventTriggerExecutor` |
 | XWS | XWS API GW | `XWSApigwRegister` | planned | registered, raises `NotImplementedError` |
-| XWS | XWS Audit | `XWSAudit` | planned | registered, raises `NotImplementedError` |
+| XWS | XWS Audit | `XWSAudit` | working | `XWSAuditExecutor` |
+| XWS | XWS DMS | `XWSDmsIntrospect` | planned | registered, raises `NotImplementedError` |
+| XWS | XWS Gateway LLM | `XWSGatewayLLM` | working | `XWSGatewayLLMExecutor` |
+| XWS | XWS IAM | `XWSIAMEvaluate` | working | `XWSIAMEvaluateExecutor` |
+| XWS | XWS Lambda | `XWSLambdaInvoke` | working | `XWSLambdaInvokeExecutor` |
+| XWS | XWS Relay | `XWSRelayNotify` | working | `XWSRelayNotifyExecutor` |
+| XWS | XWS S3 | `XWSS3` | working | `XWS3Executor` |
 
 Eight `planned` components have no executor at all and hit
 `LoudFailureExecutor`, which is the intended design (XF-02: inert components
@@ -84,15 +88,16 @@ refuses to place them, that path is only reachable via an imported
 - **[fixed] `LangfuseTracer` declared no `icon`** and rendered an empty icon
   box on the canvas and in the component panel. Added `"icon": "trace"`, plus a
   catalog test asserting every component's icon resolves in `XFLOWS_ICONS`.
-- **[open] There is no `Trigger` node you can place.** `Webhook` is the only
-  `Trigger`-category component and it is `planned`, so a flow cannot express
-  "start from an event" on the canvas at all. If a trigger node is wanted in the
-  editor, it needs a catalog entry plus an ingestion endpoint (tracked as XU-8);
-  today triggers live only in the separate Trigger tab.
-- **[open] Six `planned` components do have working executors**
-  (`Webhook`, `ReActAgent`, `LangsmithTracer`, `XWSDmsIntrospect`,
-  `XWSApigwRegister`, `XWSAudit`). For the last three that is correct — they
-  raise `NotImplementedError`. For `ReActAgent` and `LangsmithTracer` the
+- **[resolved on `main`] Trigger nodes are now placeable.** At the time of the
+  audit the only `Trigger`-category component was `Webhook`, and it was
+  `planned` — so a flow could not express "start from an event" on the canvas at
+  all. `main` has since added `XWSEventTrigger` (the XWS Event node) and
+  promoted `Webhook` to `working`; both dispatch cleanly. `XWSAudit` was
+  likewise implemented and promoted.
+- **[open] Three `planned` components still have executors**
+  (`ReActAgent`, `LangsmithTracer`, and the two inert XWS nodes). For
+  `XWSDmsIntrospect` / `XWSApigwRegister` that is correct — they raise
+  `NotImplementedError`. For `ReActAgent` and `LangsmithTracer` the
   `statusNote` says the executor is deliberately a reduced stand-in, so
   `planned` is a product call, not a bug. Worth revisiting whether "planned"
   should be split into "not built" and "built but reduced", since today both
@@ -140,8 +145,14 @@ the canvas would happily draw:
 `checkConnection()` in
 `apps/web/src/features/workflow/catalog/connection-rules.js` is now the single
 gate the canvas asks before an edge exists, and the refusal reason is shown as
-a toast. 14 tests cover it. `validateWorkflow` is unchanged and still catches
-graphs loaded from JSON.
+a toast. 14 tests cover it. `validateWorkflow` still catches graphs loaded from
+JSON, which never pass through the canvas gate.
+
+`main` independently added the **detection** half of the same problem in
+`validateWorkflow`: an Output reachable only through error edges now reports
+that a successful run would produce no output, and names the black port to
+rewire from. The two compose — prevention at the canvas, detection for any
+graph that arrives another way.
 
 ### Config edges are decorative at run time **[open]**
 
@@ -295,4 +306,3 @@ action buttons still need building.
 | Error payload reachable from node params (`{error}`) | engine + `PromptTemplate` | small |
 | Config edges consumed by the engine, or marked inert in the UI | `graph.py` or `Canvas.jsx` | medium / trivial |
 | Cross-project runs endpoint for a real dashboard | `apps/api` | small |
-| A placeable Trigger node | catalog + ingestion endpoint (XU-8) | large |

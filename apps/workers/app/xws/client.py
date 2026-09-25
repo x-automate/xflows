@@ -37,7 +37,7 @@ TOOL_CLASS_ROUTES: dict[str, tuple[tuple[str, str], ...]] = {
     "lambda": (("POST", "/lambda/invoke"),),
     "iam": (("POST", "/iam/evaluate"),),
     "relay": (("POST", "/relay/notify"),),
-    "audit": (("POST", "/audit/append"),),
+    "audit": (("POST", "/events/append"),),
     "dms-ro": (("GET", "/dms/"),),
     "apigw": (("POST", "/apigw/"), ("DELETE", "/apigw/")),
     "llm": (("POST", "/llm/"),),

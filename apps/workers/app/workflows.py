@@ -404,6 +404,7 @@ class XFlowsWorkflow(ApprovalSignalsMixin):
         run_id: str,
         trace_id: str,
         runtime_config: dict[str, Any] | None = None,
+        entry_node_id: str | None = None,
     ) -> dict[str, Any]:
         runtime_config = runtime_config or {}
         statuses: dict[str, str] = {}
@@ -412,7 +413,9 @@ class XFlowsWorkflow(ApprovalSignalsMixin):
             raw_nodes = [node.model_dump(mode="json") for node in workflow_def.nodes]
             raw_edges = [edge.model_dump(mode="json") for edge in workflow_def.edges]
             nodes, edges = normalize_workflow_graph(raw_nodes, raw_edges)
-            runner = NodeGraphRunner(nodes=nodes, edges=edges, user_input=user_input)
+            runner = NodeGraphRunner(
+                nodes=nodes, edges=edges, user_input=user_input, entry_node_id=entry_node_id
+            )
 
             async def execute_node(node: dict[str, Any], input_payload: dict[str, Any]) -> dict[str, Any]:
                 component_id = str(node.get("componentId") or "")

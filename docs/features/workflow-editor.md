@@ -99,7 +99,7 @@ render as an inner chip of their container:
 - Tooltip shows the component description.
 - Double-click adds the component; drag places it precisely.
 
-See the [node catalog](node-catalog.md) for the full list of the 39 components.
+See the [node catalog](node-catalog.md) for the full list of the 41 components.
 
 ## Parameter Editing
 
