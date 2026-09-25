@@ -143,6 +143,49 @@ class EngineRegistryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(langsmith_result["value"], "payload")
         self.assertEqual(langsmith_result["traceProvider"], "langsmith")
 
+        xws_event = {
+            "id": "n_xws_event",
+            "componentId": "XWSEventTrigger",
+            "params": {"sourceService": "lambda-svc", "eventType": "invoke"},
+        }
+        xws_event_result = await registry.dispatch(
+            node=xws_event, input_payload={"value": "payload"}, context=_context()
+        )
+        self.assertEqual(xws_event_result["value"], "payload")
+        self.assertEqual(xws_event_result["trigger"], "xws-event")
+        self.assertEqual(xws_event_result["xwsEvent"]["sourceService"], "lambda-svc")
+
+    async def test_trace_log_attaches_metadata_and_passes_value_through(self) -> None:
+        registry = create_default_registry()
+        node = {
+            "id": "n_trace",
+            "componentId": "TraceLog",
+            "params": {"message": "checkpoint reached", "level": "WARN", "fields": '{"step": 2}'},
+        }
+        result = await registry.dispatch(node=node, input_payload={"value": "unchanged"}, context=_context())
+        self.assertEqual(result["value"], "unchanged")
+        self.assertEqual(result["trace"]["level"], "warn")
+        self.assertEqual(result["trace"]["message"], "checkpoint reached")
+        self.assertEqual(result["trace"]["fields"], {"step": 2})
+        self.assertEqual(result["trace"]["nodeId"], "n_trace")
+
+    async def test_trace_log_normalizes_invalid_level_and_fields(self) -> None:
+        registry = create_default_registry()
+        node = {
+            "id": "n_trace2",
+            "componentId": "TraceLog",
+            "params": {"level": "critical", "fields": "not json"},
+        }
+        result = await registry.dispatch(node=node, input_payload={"value": ""}, context=_context())
+        self.assertEqual(result["trace"]["level"], "info")
+        self.assertEqual(result["trace"]["fields"], {"raw": "not json"})
+
+    async def test_trace_log_defaults_fields_to_empty_dict(self) -> None:
+        registry = create_default_registry()
+        node = {"id": "n_trace3", "componentId": "TraceLog", "params": {}}
+        result = await registry.dispatch(node=node, input_payload={"value": ""}, context=_context())
+        self.assertEqual(result["trace"]["fields"], {})
+
 
 class EngineGraphTests(unittest.IsolatedAsyncioTestCase):
     async def test_runner_executes_normalized_graph(self) -> None:
@@ -225,6 +268,36 @@ class EngineGraphTests(unittest.IsolatedAsyncioTestCase):
         node = {"id": "u1", "componentId": "DoesNotExist", "params": {}}
         with self.assertRaisesRegex(ValueError, "no registered executor"):
             await registry.dispatch(node=node, input_payload={"value": "kept"}, context=_context())
+
+    async def test_entry_node_id_routes_user_input_to_target_only(self) -> None:
+        nodes = [
+            {"id": "webhook", "componentId": "Webhook", "params": {}},
+            {"id": "manual", "componentId": "Input", "params": {}},
+        ]
+        edges: list[dict] = []
+        runner = NodeGraphRunner(nodes=nodes, edges=edges, user_input="delivered-body", entry_node_id="webhook")
+
+        async def execute(node: dict, input_payload: dict) -> dict:
+            return {"value": input_payload.get("value", "")}
+
+        outputs, _, _ = await runner.run(execute)
+        self.assertEqual(outputs["webhook"]["value"], "delivered-body")
+        self.assertEqual(outputs["manual"]["value"], "")
+
+    async def test_entry_node_id_none_preserves_legacy_broadcast_behavior(self) -> None:
+        nodes = [
+            {"id": "a", "componentId": "Input", "params": {}},
+            {"id": "b", "componentId": "Input", "params": {}},
+        ]
+        edges: list[dict] = []
+        runner = NodeGraphRunner(nodes=nodes, edges=edges, user_input="seed")
+
+        async def execute(node: dict, input_payload: dict) -> dict:
+            return {"value": input_payload.get("value", "")}
+
+        outputs, _, _ = await runner.run(execute)
+        self.assertEqual(outputs["a"]["value"], "seed")
+        self.assertEqual(outputs["b"]["value"], "seed")
 
     async def test_topo_sort_rejects_cycles(self) -> None:
         nodes = [

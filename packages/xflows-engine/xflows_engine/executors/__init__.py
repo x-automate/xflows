@@ -6,7 +6,9 @@ from .integrations import (
     ApiCallerExecutor,
     LangfuseTracerExecutor,
     LangsmithTracerExecutor,
+    TraceLogExecutor,
     WebhookTriggerExecutor,
+    XWSEventTriggerExecutor,
 )
 from .io import InputExecutor, OutputExecutor, PromptTemplateExecutor
 from .llm import ChatLikeExecutor, LiteLlmExecutor
@@ -42,6 +44,7 @@ __all__ = [
     "SchemaValidateExecutor",
     "SubWorkflowExecutor",
     "SwitchExecutor",
+    "TraceLogExecutor",
     "VectorStoreExecutor",
     "WaitExecutor",
     "WebSearchExecutor",
@@ -50,6 +53,7 @@ __all__ = [
     "XWSApigwRegisterExecutor",
     "XWSAuditExecutor",
     "XWSDmsIntrospectExecutor",
+    "XWSEventTriggerExecutor",
     "XWSGatewayLLMExecutor",
     "XWSIAMEvaluateExecutor",
     "XWSLambdaInvokeExecutor",

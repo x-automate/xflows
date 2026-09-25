@@ -372,7 +372,7 @@ class XWSApigwRegisterExecutor(XwsToolExecutor):
 
 
 class XWSAuditExecutor(XwsToolExecutor):
-    """Immutable audit append (docs 05 §4) — inert in v1."""
+    """Immutable audit append via audit-svc ``POST /events/append`` (docs 05 §4)."""
 
     component_ids = ("XWSAudit",)
     default_tool_class = "audit"
@@ -383,4 +383,41 @@ class XWSAuditExecutor(XwsToolExecutor):
         input_payload: dict[str, Any],
         context: NodeExecutionContext,
     ) -> NodeExecutionResult:
-        raise NotImplementedError("XWSAudit is not implemented in v1")
+        params = node.get("params", {}) or {}
+        client = self._client(context)
+        tool_class = self._tool_class(node)
+        action = str(params.get("action") or input_payload.get("action") or "xflows:AuditEvent")
+        resource = str(
+            params.get("resource")
+            or input_payload.get("resource")
+            or f"arn:xws:xflows:::run/{context.run_id}"
+        )
+        result_field = str(params.get("result", "success"))
+        category = str(params.get("category", "control"))
+        details = params.get("details")
+        if not isinstance(details, dict):
+            details = {"value": input_payload.get("value")}
+
+        result = client.request(
+            method="POST",
+            path="/events/append",
+            tool_class=tool_class,
+            run_id=context.run_id,
+            json_body={
+                "action": action,
+                "resource": resource,
+                "result": result_field,
+                "category": category,
+                "params": details,
+                "requestId": context.run_id,
+            },
+        )
+        return NodeExecutionResult(
+            value=result.get("id", result),
+            metadata={
+                "xwsTool": "XWSAudit",
+                "action": action,
+                "resource": resource,
+                "toolClass": tool_class,
+            },
+        )

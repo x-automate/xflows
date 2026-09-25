@@ -18,6 +18,7 @@ from .executors import (
     SchemaValidateExecutor,
     SubWorkflowExecutor,
     SwitchExecutor,
+    TraceLogExecutor,
     VectorStoreExecutor,
     WaitExecutor,
     WebhookTriggerExecutor,
@@ -26,6 +27,7 @@ from .executors import (
     XWSApigwRegisterExecutor,
     XWSAuditExecutor,
     XWSDmsIntrospectExecutor,
+    XWSEventTriggerExecutor,
     XWSGatewayLLMExecutor,
     XWSIAMEvaluateExecutor,
     XWSLambdaInvokeExecutor,
@@ -44,6 +46,8 @@ def create_default_registry() -> NodeRegistry:
     registry.register(HttpRequestExecutor())
     registry.register(ApiCallerExecutor())
     registry.register(WebhookTriggerExecutor())
+    registry.register(XWSEventTriggerExecutor())
+    registry.register(TraceLogExecutor())
     registry.register(LangfuseTracerExecutor())
     registry.register(LangsmithTracerExecutor())
     registry.register(SwitchExecutor())

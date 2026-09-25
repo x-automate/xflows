@@ -55,6 +55,7 @@ class RunRequest(BaseModel):
     input: str
     idempotencyKey: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    entryNodeId: str | None = None
 
 
 class RunRecord(BaseModel):

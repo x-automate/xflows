@@ -37,7 +37,8 @@ class RunRuntimeConfigTests(unittest.TestCase):
         self._client_cm.__exit__(None, None, None)
 
     def _started_runtime_config(self) -> dict:
-        return self.gateway.started[-1]["args"][-1]
+        # args = [workflow_def, input, run_id, trace_id, runtime_config, entryNodeId]
+        return self.gateway.started[-1]["args"][-2]
 
     def test_project_run_without_inline_config_gets_project_config_and_secret_ref(self) -> None:
         response = self.client.post(

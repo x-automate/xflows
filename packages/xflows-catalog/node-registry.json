@@ -396,8 +396,8 @@
       "kind": "input",
       "icon": "hook",
       "desc": "Trigger workflow execution from an external webhook.",
-      "status": "planned",
-      "statusNote": "No ingestion endpoint exists yet; planned for Wave 4 (XU-8).",
+      "status": "working",
+      "statusNote": "Create a matching TriggerRecord (type: webhook, config.nodeId = this node's id) via POST /projects/{id}/triggers to activate.",
       "params": [
         {
           "name": "path",
@@ -417,6 +417,29 @@
           "name": "secretHeader",
           "type": "text",
           "default": "x-webhook-secret"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
+      "id": "XWSEventTrigger",
+      "name": "XWS Event",
+      "category": "Trigger",
+      "kind": "input",
+      "icon": "hook",
+      "desc": "Trigger workflow execution from a SigV4-signed XWS service event (lambda-svc, s3-svc, etc.).",
+      "status": "working",
+      "statusNote": "Create a matching TriggerRecord (type: event, config.nodeId = this node's id) via POST /projects/{id}/triggers, then configure the calling XWS service with the auto-generated accessKeyId/secretAccessKey.",
+      "params": [
+        {
+          "name": "sourceService",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "eventType",
+          "type": "text",
+          "default": ""
         }
       ],
       "backendActivity": "xflows.execute_node"
@@ -836,6 +859,39 @@
       "backendActivity": "xflows.execute_node"
     },
     {
+      "id": "TraceLog",
+      "name": "Trace / Log",
+      "category": "Observability",
+      "kind": "transform",
+      "icon": "trace",
+      "desc": "Attach a structured log entry (message, level, fields) to the run trace. Standalone — not LLM-specific.",
+      "status": "working",
+      "params": [
+        {
+          "name": "message",
+          "type": "textarea",
+          "default": ""
+        },
+        {
+          "name": "level",
+          "type": "select",
+          "options": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ],
+          "default": "info"
+        },
+        {
+          "name": "fields",
+          "type": "text",
+          "default": "{}"
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
       "id": "Guardrail",
       "name": "Guardrail",
       "category": "Observability",
@@ -1076,9 +1132,37 @@
       "kind": "tool",
       "icon": "trace",
       "desc": "Append an immutable audit event via audit-svc.",
-      "status": "planned",
-      "statusNote": "Registered but inert in Wave 3 v1; arrives with the audit backbone service.",
+      "status": "working",
       "params": [
+        {
+          "name": "action",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "resource",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "result",
+          "type": "select",
+          "options": [
+            "success",
+            "denied",
+            "error"
+          ],
+          "default": "success"
+        },
+        {
+          "name": "category",
+          "type": "select",
+          "options": [
+            "control",
+            "data"
+          ],
+          "default": "control"
+        },
         {
           "name": "toolClass",
           "type": "text",

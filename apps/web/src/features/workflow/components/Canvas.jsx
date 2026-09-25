@@ -159,9 +159,11 @@ function Canvas({
     };
   };
 
+  // y offset must match `.wf-port-error-out { top: calc(50% + 11px) }` in workflow.css,
+  // otherwise the drawn edge starts several px away from the port it claims to leave.
   const errorOutPortPos = (node) => {
     const size = sizeFor(metaOf(node));
-    return { x: node.x + size.w + PORT_OVERHANG - PORT_SIZE / 2, y: node.y + size.h / 2 + 16 };
+    return { x: node.x + size.w + PORT_OVERHANG - PORT_SIZE / 2, y: node.y + size.h / 2 + 11 };
   };
 
   const configPortPos = (node, slotIdx, totalSlots) => {
@@ -464,10 +466,10 @@ function Canvas({
                   </div>
                 )}
 
-                {meta.kind !== "input" && meta.category !== "Observability" && (
+                {meta.kind !== "input" && (
                   <div className="wf-port wf-port-in" data-port="in" data-node-id={node.id} />
                 )}
-                {meta.kind !== "output" && meta.category !== "Observability" && (
+                {meta.kind !== "output" && (
                   <div
                     className="wf-port wf-port-out"
                     data-port="out"

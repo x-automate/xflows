@@ -44,6 +44,7 @@ from .persistence import create_store
 from .store import BaseStore, InMemoryStore, utc_now
 from .temporal_client import TemporalGateway
 from .triggers import trigger_scheduler_loop, webhook_signature
+from .xws_sigv4 import parse_auth_header, verify_request
 
 app = FastAPI(title=settings.app_name)
 app.add_middleware(
@@ -301,7 +302,10 @@ async def execute_local_run(
         raw_nodes = [node.model_dump(mode="json") for node in workflow.nodes]
         raw_edges = [edge.model_dump(mode="json") for edge in workflow.edges]
         nodes, edges = normalize_workflow_graph(raw_nodes, raw_edges)
-        runner = NodeGraphRunner(nodes=nodes, edges=edges, user_input=run.input)
+        entry_node_id = run.metadata.get("entryNodeId") if isinstance(run.metadata, dict) else None
+        runner = NodeGraphRunner(
+            nodes=nodes, edges=edges, user_input=run.input, entry_node_id=entry_node_id
+        )
         if runtime_config is None:
             runtime_config = (
                 run.metadata.get("runtimeConfig", {})
@@ -556,10 +560,36 @@ async def create_project_trigger(
     if not await store.get_project(project_id):
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
     config = payload.config
+    _entry_node_components = {
+        "webhook": ("Webhook", "WebhookTrigger"),
+        "event": ("XWSEventTrigger",),
+    }
+    if payload.type in _entry_node_components and config.get("nodeId"):
+        # Soft validation: a nodeId that's present must be real; a nodeId
+        # that's absent is fine (degrades to broadcast-to-all-entry-nodes).
+        target_workflow = await store.get_workflow(str(config.get("workflowId", "")))
+        if target_workflow:
+            matching = next(
+                (n for n in target_workflow.nodes if n.id == config["nodeId"]), None
+            )
+            if not matching or matching.componentId not in _entry_node_components[payload.type]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"config.nodeId does not reference a {payload.type} trigger node on this workflow",
+                )
     if payload.type == "webhook":
         # XU-8: registration secret generated at creation; used for HMAC
         # verification of deliveries on POST /webhooks/{trigger_id}.
         config = {**config, "signatureSecret": config.get("signatureSecret") or token_hex(16)}
+    elif payload.type == "event":
+        # SigV4 key pair for XWS-originated deliveries on POST /events/{trigger_id}.
+        # Handed to the calling XWS service (e.g. a lambda-svc FunctionTrigger),
+        # which signs with its own existing xws_common signing code.
+        config = {
+            **config,
+            "accessKeyId": config.get("accessKeyId") or f"evt_{token_hex(8)}",
+            "secretAccessKey": config.get("secretAccessKey") or token_hex(32),
+        }
     return await store.create_trigger(project_id, TriggerCreateRequest(
         type=payload.type,
         enabled=payload.enabled,
@@ -726,6 +756,8 @@ async def _create_run_impl(
     runtime_config, redacted_config = await _resolve_runtime_config(project_id, inline_config)
     if redacted_config:
         metadata["runtimeConfig"] = redacted_config
+    if payload.entryNodeId:
+        metadata["entryNodeId"] = payload.entryNodeId
 
     trace_id = f"trace_{uuid4().hex[:16]}"
     run = await store.create_run(
@@ -756,6 +788,7 @@ async def _create_run_impl(
                 run.id,
                 trace_id,
                 runtime_config,
+                payload.entryNodeId,
             ],
         )
 
@@ -1054,7 +1087,47 @@ async def webhook_receiver(trigger_id: str, request: Request) -> dict[str, Any]:
         RunRequest(
             input=str(trigger.config.get("input", body.decode("utf-8", errors="replace"))),
             idempotencyKey=idempotency_key,
+            entryNodeId=trigger.config.get("nodeId"),
             metadata={"triggerId": trigger_id, "deliveryId": delivery_id},
+        ),
+        project_id=trigger.projectId,
+    )
+    return {"runId": run.id, "status": run.status}
+
+
+# --- XWS event trigger receiver: SigV4-signed deliveries from XWS services ---
+@app.post("/events/{trigger_id}")
+async def event_receiver(trigger_id: str, request: Request) -> dict[str, Any]:
+    trigger = await store.get_trigger(trigger_id)
+    if not trigger or trigger.type != "event" or not trigger.enabled:
+        raise HTTPException(status_code=404, detail=f"Event trigger {trigger_id} not found")
+    body = await request.body()
+    auth_header = request.headers.get("authorization", "")
+    try:
+        access_key_id = parse_auth_header(auth_header)["access_key"] if auth_header else ""
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Invalid Authorization header")
+    if not access_key_id or access_key_id != trigger.config.get("accessKeyId"):
+        raise HTTPException(status_code=403, detail="Unknown access key")
+    try:
+        await verify_request(request, str(trigger.config.get("secretAccessKey", "")), body)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    delivery_id = (
+        request.headers.get("x-delivery-id")
+        or hashlib.sha256(body).hexdigest()
+    )
+    workflow_id = str(trigger.config.get("workflowId", ""))
+    if not workflow_id:
+        raise HTTPException(status_code=409, detail="Event trigger has no workflowId configured")
+    idempotency_key = f"event:{trigger_id}:{delivery_id}"
+    run = await _create_run_impl(
+        workflow_id,
+        RunRequest(
+            input=body.decode("utf-8", errors="replace"),
+            idempotencyKey=idempotency_key,
+            entryNodeId=trigger.config.get("nodeId"),
+            metadata={"triggerId": trigger_id, "deliveryId": delivery_id, "source": "xws-event"},
         ),
         project_id=trigger.projectId,
     )

@@ -72,24 +72,36 @@ export function validateWorkflow(nodes, edges) {
     configInDeg[edge.target] += 1;
   });
 
+  const errorInDeg = Object.fromEntries(nodes.map((node) => [node.id, 0]));
+  const errorOutDeg = Object.fromEntries(nodes.map((node) => [node.id, 0]));
+  errorEdges.forEach((edge) => {
+    errorOutDeg[edge.source] += 1;
+    errorInDeg[edge.target] += 1;
+  });
+
   if (nodes.length > 1) {
     nodes.forEach((node) => {
       const nodeMeta = meta(node);
       if (node.parent) return;
       if (nodeMeta.kind === "provider") return;
-      if (
-        outDeg[node.id] === 0 &&
-        inDeg[node.id] === 0 &&
-        configInDeg[node.id] === 0 &&
-        configOutDeg[node.id] === 0
-      ) {
-        errors.push(`"${meta(node).name}" is not connected.`);
+      const hasData = outDeg[node.id] > 0 || inDeg[node.id] > 0;
+      const hasConfig = configInDeg[node.id] > 0 || configOutDeg[node.id] > 0;
+      // An error edge is a real connection (a deliberate failure branch), so it
+      // counts here — it just never delivers on a successful run.
+      const hasError = errorInDeg[node.id] > 0 || errorOutDeg[node.id] > 0;
+      if (!hasData && !hasConfig && !hasError) {
+        errors.push(`"${nodeMeta.name}" is not connected.`);
       }
     });
   }
   outputs.forEach((outputNode) => {
     if (outDeg[outputNode.id] > 0) {
       errors.push(`Output "${meta(outputNode).name}" must be terminal.`);
+    }
+    if (inDeg[outputNode.id] === 0 && errorInDeg[outputNode.id] > 0) {
+      errors.push(
+        `Output "${meta(outputNode).name}" is reachable only through error (red dashed) edges — a successful run would produce no output. Rewire it from the data output port (the black port at the middle of the upstream node's right edge, not the red one just below it).`
+      );
     }
   });
   inputs.forEach((inputNode) => {
