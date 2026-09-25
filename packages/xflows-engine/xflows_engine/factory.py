@@ -6,6 +6,7 @@ from .executors import (
     ApprovalExecutor,
     ChatLikeExecutor,
     CodegenExecutor,
+    ErrorLogExecutor,
     HttpRequestExecutor,
     IfElseExecutor,
     InputExecutor,
@@ -48,6 +49,7 @@ def create_default_registry() -> NodeRegistry:
     registry.register(WebhookTriggerExecutor())
     registry.register(XWSEventTriggerExecutor())
     registry.register(TraceLogExecutor())
+    registry.register(ErrorLogExecutor())
     registry.register(LangfuseTracerExecutor())
     registry.register(LangsmithTracerExecutor())
     registry.register(SwitchExecutor())

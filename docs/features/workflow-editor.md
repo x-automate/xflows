@@ -29,10 +29,19 @@ Implemented in `components/Canvas.jsx`.
 - **Nodes** are absolutely-positioned divs: 132×46 px for regular nodes, 200×110 px for
   containers. Each shows its icon (inline SVG from the catalog), name, category, and — during
   runs — a live badge (spinner, duration in ms, or failed marker).
-- **Ports**:
-  - Data ports: `in` (left side) and `out` (right side) of every node.
-  - Config ports: a top-center `config-out` on Observability/Memory/Tool aux nodes, and labeled
-    `config-in` slots along a container's bottom edge (declared by the container's `configs`).
+- **Ports** are gated on the component's `kind`, never on its category. Every node that
+  executes offers the *same two outputs*, because any executor can throw:
+  - `in` — left edge, mid-height. Absent on `input` kinds (Input and the triggers).
+  - `out` — right edge, mid-height, black. The node's normal result.
+  - `error-out` — right edge, 20px lower, red. Runs instead when the node throws.
+  - Two structural exceptions: an `output` kind is the terminal sink and has no outputs at
+    all, and an `aux` kind (Langfuse, LangSmith, Tracer, Guardrail, Vector DB) attaches to a
+    container's config slot rather than to the data flow, so it has no data ports.
+  - Category is *not* the gate: `TraceLog` and `ErrorLog` are categorised Observability but
+    are ordinary inline transforms with full data ports. Gating on the category stripped them.
+  - Config ports: a top-center `config-out` on any node whose category some container slot
+    accepts (derived from the registry, not hardcoded), and labeled `config-in` slots along a
+    container's bottom edge (declared by the container's `configs`).
   - Port hit-testing uses `document.elementFromPoint` during wire dragging, so connections work
     at any pan/zoom.
 - **Edges** are cubic-bezier SVG paths:
@@ -40,7 +49,10 @@ Implemented in `components/Canvas.jsx`.
   - **Error edges** (`kind: "error"`): from the red `error-out` port on the node's lower right
     to a target's data-in, red (`#dc2626`) and dashed. Taken when the source node raises. The
     payload delivered is `{"value": "", "error": {message, nodeId, componentId}}` — note the
-    blank `value`.
+    blank `value`, which is why a plain `PromptTemplate` on an error branch renders nothing
+    useful. Wire the branch into an **Error Log** node instead: it reads the error envelope,
+    records a structured entry, and returns the formatted message as its value so the rest of
+    the branch has real text.
   - **Config edges**: aux node → container slot, orange (`#c2410c`) vertical bezier, labeled by
     slot name. Config edges are metadata for the designer; the backend executes only data and
     error edges (`normalize_workflow_graph` drops config edges).
@@ -99,7 +111,7 @@ render as an inner chip of their container:
 - Tooltip shows the component description.
 - Double-click adds the component; drag places it precisely.
 
-See the [node catalog](node-catalog.md) for the full list of the 41 components.
+See the [node catalog](node-catalog.md) for the full list of the 42 components.
 
 ## Parameter Editing
 

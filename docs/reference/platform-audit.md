@@ -16,16 +16,16 @@ Measured on this branch merged with `main` at `dbb6ccb`:
 
 | Suite | Result |
 |---|---|
-| `packages/xflows-engine/tests` | 162 passed |
+| `packages/xflows-engine/tests` | 168 passed |
 | `apps/api/tests` | 66 passed, 1 skipped |
 | `apps/workers/tests` | 140 passed |
-| `apps/web` vitest | 36 passed |
+| `apps/web` vitest | 48 passed |
 | `ruff check apps packages tools` | clean |
 | `eslint .` / `vite build` | clean |
 
 ## 2. Nodes
 
-All 41 catalog components were dispatched through the engine with their
+All 42 catalog components were dispatched through the engine with their
 declared default params (plus minimal fixtures for executors with hard-required
 params such as `XWSS3.key`). Result: **every component the editor lets you place
 executes.** Nothing placeable is inert.
@@ -52,6 +52,7 @@ The catalog's `status` field gates placement — `isPlaceable()` refuses
 | LLM-Provider | OpenAI | `OpenAIChat` | working | `ChatLikeExecutor` |
 | Memory | Summarize | `Summarizer` | planned | none |
 | Memory | Vector DB | `VectorStore` | working | `VectorStoreExecutor` |
+| Observability | Error Log | `ErrorLog` | working | `ErrorLogExecutor` |
 | Observability | Guardrail | `Guardrail` | planned | none |
 | Observability | Langfuse | `LangfuseTracer` | partial | `LangfuseTracerExecutor` |
 | Observability | LangSmith | `LangsmithTracer` | planned | `LangsmithTracerExecutor` |
@@ -125,6 +126,33 @@ branch taken when a node throws — created by accident. Three causes, all fixed
    endpoints were computed from the node box while the dots render 1px outside
    it. Both now derive from shared `PORT_CENTER` / `ERROR_PORT_DROP` constants.
 
+### The port model was gated on category, not kind **[fixed]**
+
+Ports were decided by a mix of `kind` and `category`, which produced three
+inconsistencies:
+
+- `TraceLog` is `kind: "transform"` with an inline pass-through executor, but
+  its Observability *category* stripped its data ports — so the log node `main`
+  had just added could not be wired into a flow at all. (`main` had already
+  loosened the canvas check; the connection rules added here still refused the
+  edge, so the two changes had to be reconciled.)
+- Genuine `aux` nodes were identified as "Observability, or the id VectorStore"
+  — a hardcoded id that the `kind: "aux"` field already expresses.
+- Only some nodes had an error output, so the same failure was routable from one
+  node and not from its neighbour.
+
+Ports are now gated on `kind` alone, and **every node that executes offers both
+outputs — data and error** — since any executor can throw. Two exceptions are
+structural rather than stylistic: an `output` kind is the terminal sink and has
+no outputs, and an `aux` kind attaches to a config slot instead of the data
+flow. Triggers gained an error output: an event trigger parsing a malformed
+payload is exactly a failure worth routing.
+
+The config-source set (which nodes get a `config-out` port) is now derived from
+the slots declared in the registry rather than a hardcoded category list, so a
+new slot or a re-categorised component cannot silently lose its port.
+`port-model.test.js` asserts the whole model against the catalog.
+
 ### Connections were never gated
 
 `connect()` accepted **any** source/target pair. The graph was only judged
@@ -167,7 +195,7 @@ This is deliberate today, not a regression. But the UI gives no hint, and a
 user wiring up those ports will reasonably expect them to do something. Either
 consume config edges in the engine, or mark the slots as not-yet-wired in the UI.
 
-### Error branches receive an empty value **[open]**
+### Error branches receive an empty value **[addressed]**
 
 Verified with a live run. On an error edge the engine delivers:
 
@@ -176,10 +204,19 @@ Verified with a live run. On an error edge the engine delivers:
 ```
 
 The `value` is deliberately blank, and `PromptTemplate` only substitutes
-`{input}` — so a recovery branch renders `"FALLBACK for: "` with nothing after
-it. The error detail is in the payload but unreachable from any node param.
-Recovery branches need either `{error}` / `{error.message}` substitution or an
-`Input`-like node that reads the error payload.
+`{input}` — so a recovery branch rendered `"FALLBACK for: "` with nothing after
+it. The error detail sat in the payload, unreachable from any node param.
+
+The **`ErrorLog`** node closes this: it reads the envelope and returns the
+formatted message as its value, so everything downstream of it gets real text.
+`Input → IfElse --error--> ErrorLog → Output` now produces
+`"IfElse (gate) failed: IfElse: value does not contain 'refund'"` at the Output
+instead of an empty string.
+
+Still **[open]** for branches that do *not* pass through `ErrorLog`:
+`PromptTemplate` has no `{error}` substitution, so a recovery prompt cannot
+quote the failure directly. Adding `{error}` / `{error.message}` to the
+template substitution would finish the job.
 
 ## 4. Dashboard
 

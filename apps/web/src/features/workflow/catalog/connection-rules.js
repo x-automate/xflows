@@ -12,15 +12,18 @@ import { getComponentMeta } from "./catalog-meta.js";
  * `checkConnection` is the single gate the canvas asks before an edge exists.
  */
 
-const AUX_CATEGORIES = new Set(["Observability"]);
-
 function metaOf(node) {
   return node ? getComponentMeta(node.componentId) : null;
 }
 
-/** Nodes that never take part in the data flow (they wire through config slots). */
-function isAuxOnly(meta) {
-  return Boolean(meta) && AUX_CATEGORIES.has(meta.category);
+/**
+ * Nodes that never take part in the data flow — they attach to a container's
+ * config slot instead. This is `kind === "aux"`, not a category: `TraceLog` is
+ * categorised Observability but is an ordinary inline transform with real data
+ * ports, and gating on the category refused perfectly valid wires into it.
+ */
+export function isAuxOnly(meta) {
+  return meta?.kind === "aux";
 }
 
 function reachable(edges, fromId, toId) {
@@ -115,9 +118,6 @@ export function checkConnection({ nodes, edges, source, target, kind = "data", s
       ok: false,
       reason: `"${auxName}" attaches to a config slot, not to the data flow.`,
     };
-  }
-  if (kind === "error" && sourceMeta.kind === "input") {
-    return { ok: false, reason: `"${sourceMeta.name}" cannot fail and has no error output.` };
   }
   if (reachable(edges, target, source)) {
     return {

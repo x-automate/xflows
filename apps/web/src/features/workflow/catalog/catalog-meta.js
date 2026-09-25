@@ -19,6 +19,7 @@ export const XFLOWS_ICONS = {
   trace: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2"/></svg>',
   guard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg>',
   litellm: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg>',
+  alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4L2.5 20h19L12 4z"/><path d="M12 10v4M12 17.2v.1" stroke-linecap="round"/></svg>',
   hook: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 8v7a4 4 0 1 0 8 0V7a3 3 0 0 0-6 0v8a2 2 0 1 0 4 0V9"/></svg>',
 };
 
@@ -41,6 +42,21 @@ const CATALOG_BY_ID = Object.fromEntries(
 
 export function getComponentMeta(componentId) {
   return CATALOG_BY_ID[componentId] || null;
+}
+
+/**
+ * Categories some container's config slot accepts, derived from the registry so
+ * a new slot or a re-categorised component cannot silently lose its config port.
+ * A node in one of these can source a config edge.
+ */
+export const CONFIG_SOURCE_CATEGORIES = new Set(
+  XFLOWS_CATALOG.flatMap((component) =>
+    (component.configs || []).flatMap((slot) => slot.accepts || [])
+  )
+);
+
+export function canSourceConfigEdge(meta) {
+  return Boolean(meta) && CONFIG_SOURCE_CATEGORIES.has(meta.category);
 }
 
 export function getRequiredProjectConfigs(nodes = []) {

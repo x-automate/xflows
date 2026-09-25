@@ -860,6 +860,48 @@
       "backendActivity": "xflows.execute_node"
     },
     {
+      "id": "ErrorLog",
+      "name": "Error Log",
+      "category": "Observability",
+      "icon": "alert",
+      "kind": "transform",
+      "desc": "Wire a red error edge into this node to record the failure. Logs the failing node, component and reason, and passes the formatted message on so the rest of the branch has real text.",
+      "status": "working",
+      "params": [
+        {
+          "name": "level",
+          "type": "select",
+          "options": ["debug", "info", "warn", "error"],
+          "default": "error"
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "default": "",
+          "help": "Optional prefix, e.g. the stage that failed."
+        },
+        {
+          "name": "fields",
+          "type": "text",
+          "default": "{}",
+          "help": "Extra JSON fields to attach to the log entry."
+        },
+        {
+          "name": "includeInput",
+          "type": "bool",
+          "default": false,
+          "help": "Record the input the failing node received."
+        },
+        {
+          "name": "rethrow",
+          "type": "bool",
+          "default": false,
+          "help": "Re-raise after logging so the run still fails. Leave off to recover."
+        }
+      ],
+      "backendActivity": "xflows.execute_node"
+    },
+    {
       "id": "TraceLog",
       "name": "Trace / Log",
       "category": "Observability",

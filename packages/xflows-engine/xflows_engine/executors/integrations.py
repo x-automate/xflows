@@ -89,6 +89,89 @@ class TraceLogExecutor(BaseNodeExecutor):
         return NodeExecutionResult(value=input_payload.get("value", ""), metadata=metadata)
 
 
+def _parse_fields(raw: Any) -> dict[str, Any]:
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        if not raw.strip():
+            return {}
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            return {"raw": raw}
+        return parsed if isinstance(parsed, dict) else {"raw": raw}
+    return {}
+
+
+class ErrorLogExecutor(BaseNodeExecutor):
+    """Terminus for a red error edge: record the failure, keep the run readable.
+
+    The engine delivers an error edge as ``{"value": "", "error": {...}}`` — the
+    blank value is why a plain ``PromptTemplate`` on an error branch renders
+    nothing useful. This node reads that envelope, emits a structured log under
+    ``errorLog`` metadata (so it lands in the run's ``node_succeeded`` payload
+    and shows up in the Logs tab), and returns the formatted message as its
+    value, so whatever follows on the branch has real text to work with.
+
+    Wired to a node's *data* output instead it degrades sensibly: there is no
+    error envelope, so it logs the incoming value and passes it through.
+    """
+
+    component_ids = ("ErrorLog",)
+
+    async def execute(
+        self,
+        node: dict[str, Any],
+        input_payload: dict[str, Any],
+        context: NodeExecutionContext,
+    ) -> NodeExecutionResult:
+        params = node.get("params", {}) or {}
+        level = str(params.get("level", "error")).lower()
+        if level not in _LOG_LEVELS:
+            level = "error"
+
+        error = input_payload.get("error")
+        error = error if isinstance(error, dict) else {}
+        failed_node = str(error.get("nodeId") or "")
+        failed_component = str(error.get("componentId") or "")
+        reason = str(error.get("message") or "")
+
+        if reason:
+            origin = f"{failed_component or 'node'} ({failed_node})" if failed_node else "upstream node"
+            summary = f"{origin} failed: {reason}"
+        else:
+            # Not on an error branch — nothing failed, just log what came through.
+            summary = str(input_payload.get("value", ""))
+
+        prefix = str(params.get("message") or "").strip()
+        if prefix:
+            summary = f"{prefix}: {summary}" if summary else prefix
+
+        entry: dict[str, Any] = {
+            "level": level,
+            "message": summary,
+            "nodeId": str(node.get("id", "")),
+            "runId": context.run_id,
+            "fields": _parse_fields(params.get("fields", {})),
+        }
+        if error:
+            entry["failedNodeId"] = failed_node
+            entry["failedComponentId"] = failed_component
+            entry["reason"] = reason
+        if str(params.get("includeInput", "false")).lower() == "true":
+            entry["input"] = input_payload.get("value", "")
+
+        metadata: dict[str, Any] = {"errorLog": entry, "trace": entry}
+
+        # Logging a failure does not by itself mean the run recovered. `rethrow`
+        # records the entry and then re-raises, so the run still fails loudly —
+        # for branches that exist to report, not to recover.
+        if str(params.get("rethrow", "false")).lower() == "true" and error:
+            raise RuntimeError(summary)
+
+        return NodeExecutionResult(value=summary, metadata=metadata)
+
+
 class ApiCallerExecutor(BaseNodeExecutor):
     component_ids = ("ApiCaller", "ApiCall")
 
