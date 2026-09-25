@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import socket
+from urllib.parse import urlsplit
 
 import asyncpg
 from redis.asyncio import Redis
@@ -127,8 +130,105 @@ async def _create_redis(url: str) -> Redis | None:
         return None
 
 
+def describe_dsn(dsn: str) -> str:
+    """``host:port/database`` for logs — never the user or password."""
+    try:
+        parts = urlsplit(dsn)
+        host = parts.hostname
+        port = parts.port or 5432
+    except ValueError:
+        return "<unparseable DATABASE_URL>"
+    if not host:
+        # No authority component: the value is not a DSN at all, so its "path" is
+        # not a database name and echoing it back would only mislead.
+        return "<unparseable DATABASE_URL>"
+    database = (parts.path or "").lstrip("/") or "<no database>"
+    return f"{host}:{port}/{database}"
+
+
+def _connect_failure_hint(dsn: str, error: BaseException) -> str:
+    """Turn an asyncpg connection failure into something worth acting on."""
+    target = describe_dsn(dsn)
+    host = urlsplit(dsn).hostname or "<no host>"
+    if isinstance(error, socket.gaierror):
+        cause = f"the host name {host!r} does not resolve"
+        remedies = (
+            f"Check DATABASE_URL. Inside docker compose the host must be the service name "
+            f"('postgres'), and the API has to be on the same compose project — "
+            f"`docker compose --profile core up` starts both. Running the API outside "
+            f"compose (a bare `uvicorn`, or a container started with `docker run`) cannot "
+            f"resolve {host!r}: point DATABASE_URL at a reachable host such as "
+            f"localhost:5432, or set PERSISTENCE_MODE=memory for a throwaway instance."
+        )
+    elif isinstance(error, (ConnectionRefusedError, OSError)):
+        cause = "the host resolved but refused the connection"
+        remedies = (
+            "Postgres is probably not accepting connections yet, or the port is wrong. "
+            "Check that the database container is healthy and that DATABASE_URL's port "
+            "matches the one it publishes."
+        )
+    elif isinstance(error, asyncpg.InvalidAuthorizationSpecificationError):
+        cause = "the server rejected the credentials"
+        remedies = (
+            "Check POSTGRES_USER / POSTGRES_PASSWORD against the values the database was "
+            "initialised with. An existing postgres_data volume keeps the original "
+            "credentials even after you change the .env."
+        )
+    else:
+        cause = f"{type(error).__name__}: {error}"
+        remedies = "Check DATABASE_URL and that the database is reachable from this container."
+    return f"Cannot reach Postgres at {target} — {cause}. {remedies}"
+
+
+# Retrying these is pointless: bad credentials or a missing database are
+# configuration, not a startup race, and waiting out the backoff only delays
+# the message that says so.
+_NON_RETRYABLE = (
+    asyncpg.InvalidAuthorizationSpecificationError,
+    asyncpg.InvalidCatalogNameError,
+    asyncpg.InsufficientPrivilegeError,
+)
+
+
+async def _connect_pool(settings: Settings) -> asyncpg.Pool:
+    """Open the pool, retrying while the database is still coming up.
+
+    Startup order is a race in every container runtime: compose's
+    ``depends_on: service_healthy`` covers the happy path, but a bare
+    ``docker run``, a Kubernetes rollout or a database restart all land here with
+    the DB briefly unreachable. Retrying a few times costs seconds; failing
+    immediately costs a container restart loop.
+    """
+    attempts = max(1, settings.db_connect_max_attempts)
+    backoff = max(0.0, settings.db_connect_backoff_s)
+    last_error: BaseException | None = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            return await asyncpg.create_pool(settings.database_url, min_size=1, max_size=10)
+        except (OSError, asyncpg.PostgresError) as exc:
+            last_error = exc
+            if attempt == attempts or isinstance(exc, _NON_RETRYABLE):
+                break
+            delay = backoff * (2 ** (attempt - 1))
+            logger.warning(
+                "Postgres not reachable at %s (attempt %d/%d): %s — retrying in %.1fs",
+                describe_dsn(settings.database_url),
+                attempt,
+                attempts,
+                exc,
+                delay,
+            )
+            await asyncio.sleep(delay)
+
+    message = _connect_failure_hint(settings.database_url, last_error)
+    logger.error("%s", message)
+    raise RuntimeError(message) from last_error
+
+
 async def _create_postgres_store(settings: Settings) -> PostgresStore:
-    pool = await asyncpg.create_pool(settings.database_url, min_size=1, max_size=10)
+    pool = await _connect_pool(settings)
+    logger.info("Connected to Postgres at %s", describe_dsn(settings.database_url))
     if settings.schema_auto_migrate:
         async with pool.acquire() as conn:
             await conn.execute(SCHEMA_SQL)
