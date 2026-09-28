@@ -7,11 +7,40 @@ import {
 import {
   NODE_H,
   NODE_W,
+  nodeOriginForPort,
   portsForNode,
   sizeFor,
   sourcePortPos,
   targetPortPos,
 } from "../catalog/port-model";
+import { linkFor } from "../catalog/connect-candidates";
+import ConnectMenu from "./ConnectMenu";
+
+/**
+ * Which bubble the far end of a wire has to land on, given which end is held.
+ * Holding an output looks for an input; holding an input looks for an output,
+ * and a red one there turns the wire into an error edge.
+ */
+const DROP_SELECTOR = {
+  "forward:data": "[data-port='in']",
+  "forward:error": "[data-port='in']",
+  "forward:config": "[data-port='config-in']",
+  "reverse:data": "[data-port='out'],[data-port='error-out']",
+  "reverse:error": "[data-port='out'],[data-port='error-out']",
+  "reverse:config": "[data-port='config-out']",
+};
+
+/** The bubble a newly created node must present to the wire that made it. */
+const NEW_NODE_PORT = {
+  "forward:data": "in",
+  "forward:error": "in",
+  "forward:config": "config-in",
+  "reverse:data": "out",
+  "reverse:error": "out",
+  "reverse:config": "config-out",
+};
+
+const wireKey = (wire) => `${wire.direction}:${wire.kind || "data"}`;
 
 function Canvas({
   nodes,
@@ -21,6 +50,7 @@ function Canvas({
   onNodeMove,
   onNodeAdd,
   onConnect,
+  onConnectNew,
   onDelete,
   onOpenParams,
   onUpdateEdge,
@@ -30,6 +60,7 @@ function Canvas({
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
   const [drag, setDrag] = useState(null);
   const [pendingWire, setPendingWire] = useState(null);
+  const [connectMenu, setConnectMenu] = useState(null);
 
   const nodeById = useMemo(
     () => Object.fromEntries(nodes.map((node) => [node.id, node])),
@@ -115,23 +146,83 @@ function Canvas({
     }
   };
 
+  /**
+   * Where a released wire lands: the bubble under the cursor, or failing that
+   * the node under it, so a drop anywhere on a node still connects.
+   */
+  const resolveDrop = (el, wire) => {
+    const portEl = el?.closest?.(DROP_SELECTOR[wireKey(wire)] || "[data-port='in']");
+    if (portEl && portEl.dataset.nodeId !== wire.anchorId) {
+      const droppedOnError =
+        wire.direction === "reverse" && portEl.dataset.port === "error-out";
+      return {
+        otherId: portEl.dataset.nodeId,
+        kind: droppedOnError ? "error" : wire.kind,
+        slot:
+          wire.kind === "config"
+            ? wire.direction === "reverse"
+              ? wire.slot
+              : portEl.dataset.slot
+            : undefined,
+      };
+    }
+    const otherId = el?.closest?.("[data-node-id]")?.dataset?.nodeId;
+    if (!otherId || otherId === wire.anchorId) return null;
+    if (wire.kind === "config" && wire.direction === "forward") {
+      // Which slot is not obvious from the node body; let the menu ask.
+      const slots = metaOf(nodeById[otherId])?.configs || [];
+      if (slots.length !== 1) return null;
+      return { otherId, kind: "config", slot: slots[0].name };
+    }
+    return { otherId, kind: wire.kind, slot: wire.slot };
+  };
+
   const onMouseUp = (event) => {
     setDrag(null);
-    if (pendingWire) {
-      const el = document.elementFromPoint(event.clientX, event.clientY);
-      const dropSelector =
-        pendingWire.kind === "config" ? "[data-port='config-in']" : "[data-port='in']";
-      const target = el?.closest?.(dropSelector);
-      if (target && target.dataset.nodeId !== pendingWire.from) {
-        onConnect(
-          pendingWire.from,
-          target.dataset.nodeId,
-          pendingWire.kind,
-          target.dataset.slot
-        );
-      }
-      setPendingWire(null);
+    if (!pendingWire) return;
+    const wire = pendingWire;
+    setPendingWire(null);
+    const el = document.elementFromPoint(event.clientX, event.clientY);
+    const landed = resolveDrop(el, wire);
+    if (landed) {
+      const link = linkFor(
+        { ...wire, kind: landed.kind },
+        landed.otherId,
+        landed.slot
+      );
+      onConnect(link.source, link.target, link.kind, link.slot);
+      return;
     }
+    const pulled = Math.hypot(event.clientX - wire.cx, event.clientY - wire.cy) >= 4;
+    if (!pulled) return;
+    // Dropped on empty canvas: keep the wire on screen and ask where it goes.
+    const rect = wrapRef.current.getBoundingClientRect();
+    setConnectMenu({
+      wire,
+      at: { x: event.clientX - rect.left, y: event.clientY - rect.top },
+      canvas: { x: wire.tx, y: wire.ty },
+      bounds: { w: rect.width, h: rect.height },
+    });
+  };
+
+  const closeConnectMenu = () => setConnectMenu(null);
+
+  const chooseConnection = (row) => {
+    const { wire, canvas } = connectMenu;
+    setConnectMenu(null);
+    if (row.type === "node") {
+      const link = linkFor(wire, row.id, row.slot);
+      onConnect(link.source, link.target, link.kind, link.slot);
+      return;
+    }
+    const meta = getComponentMeta(row.componentId);
+    const origin = nodeOriginForPort(canvas, meta, NEW_NODE_PORT[wireKey(wire)]);
+    onConnectNew?.(row.componentId, origin, {
+      anchorId: wire.anchorId,
+      direction: wire.direction,
+      kind: wire.kind,
+      slot: row.slot ?? wire.slot,
+    });
   };
 
   useEffect(() => {
@@ -143,6 +234,15 @@ function Canvas({
     return () => window.removeEventListener("mouseup", stop);
   }, []);
 
+  useEffect(() => {
+    if (!connectMenu) return undefined;
+    const onKey = (event) => {
+      if (event.key === "Escape") setConnectMenu(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [connectMenu]);
+
   const edgePath = (a, b, vertical = false) => {
     if (vertical) {
       const dy = Math.max(30, Math.abs(b.y - a.y) * 0.5);
@@ -153,6 +253,10 @@ function Canvas({
     return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`;
   };
 
+  // While the menu is open the wire stays on screen, frozen where it was
+  // dropped, so the choice still reads as "this wire goes to …".
+  const liveWire = pendingWire || connectMenu?.wire || null;
+
   const beginNodeDrag = (event, node) => {
     event.stopPropagation();
     onSelect(node.id);
@@ -162,10 +266,24 @@ function Canvas({
     setDrag({ type: "node", id: node.id, ox, oy });
   };
 
-  const startWire = (event, node, kind) => {
+  const startWire = (event, node, port) => {
     event.stopPropagation();
-    const p = sourcePortPos(node, kind);
-    setPendingWire({ from: node.id, kind, sx: p.x, sy: p.y, tx: p.x, ty: p.y });
+    event.preventDefault();
+    setConnectMenu(null);
+    setPendingWire({
+      anchorId: node.id,
+      direction: port.direction,
+      kind: port.wireKind,
+      slot: port.slot,
+      sx: port.x,
+      sy: port.y,
+      tx: port.x,
+      ty: port.y,
+      // Where the pointer went down, so a stray click on a bubble does not
+      // pop the connect menu; only a wire someone actually pulled does.
+      cx: event.clientX,
+      cy: event.clientY,
+    });
   };
 
   return (
@@ -245,18 +363,24 @@ function Canvas({
               </g>
             );
           })}
-          {pendingWire && (
+          {liveWire && (
             <path
               d={edgePath(
-                { x: pendingWire.sx, y: pendingWire.sy },
-                { x: pendingWire.tx, y: pendingWire.ty },
-                pendingWire.kind === "config"
+                liveWire.direction === "reverse"
+                  ? { x: liveWire.tx, y: liveWire.ty }
+                  : { x: liveWire.sx, y: liveWire.sy },
+                liveWire.direction === "reverse"
+                  ? { x: liveWire.sx, y: liveWire.sy }
+                  : { x: liveWire.tx, y: liveWire.ty },
+                liveWire.kind === "config"
               )}
+              className={`wf-wire-pending${connectMenu ? " held" : ""}`}
+              data-kind={liveWire.kind}
               fill="none"
               stroke={
-                pendingWire.kind === "config"
+                liveWire.kind === "config"
                   ? "#c2410c"
-                  : pendingWire.kind === "error"
+                  : liveWire.kind === "error"
                     ? "#dc2626"
                     : "#3b82f6"
               }
@@ -285,7 +409,7 @@ function Canvas({
             <div
               key={node.id}
               {...dataAttrs}
-              data-node="1"
+              data-node-id={node.id}
               className={`wf-node${isContainer ? " wf-container" : ""}${
                 selected === node.id ? " selected" : ""
               }${status ? ` run-${status}` : ""}${isAux ? " wf-aux" : ""}`}
@@ -418,11 +542,7 @@ function Canvas({
                 data-slot={port.slot}
                 style={{ left: port.x, top: port.y }}
                 title={port.title}
-                onMouseDown={(event) =>
-                  port.wireKind
-                    ? startWire(event, node, port.wireKind)
-                    : beginNodeDrag(event, node)
-                }
+                onMouseDown={(event) => startWire(event, node, port)}
               >
                 {port.label && <span className="wf-slot-label">{port.label}</span>}
               </div>
@@ -430,6 +550,18 @@ function Canvas({
           })}
         </div>
       </div>
+
+      {connectMenu && (
+        <ConnectMenu
+          pending={connectMenu.wire}
+          nodes={nodes}
+          edges={edges}
+          position={connectMenu.at}
+          bounds={connectMenu.bounds}
+          onChoose={chooseConnection}
+          onClose={closeConnectMenu}
+        />
+      )}
 
       <div className="wf-canvas-controls">
         <button onClick={() => setView({ x: 0, y: 0, k: 1 })}>Reset</button>

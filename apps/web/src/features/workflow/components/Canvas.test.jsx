@@ -3,7 +3,12 @@ import { StrictMode, act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { XFLOWS_CATALOG, getComponentMeta } from "../catalog/catalog-meta";
-import { hasDataOut, hasErrorOut, isAuxOnly } from "../catalog/port-model";
+import {
+  hasDataOut,
+  hasErrorOut,
+  isAuxOnly,
+  nodeOriginForPort,
+} from "../catalog/port-model";
 import Canvas from "./Canvas";
 
 /**
@@ -20,11 +25,15 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 let container;
 let root;
+/** jsdom has no layout, so the canvas's hit test is fed explicitly. */
+let hitTarget = null;
 
 beforeEach(() => {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
+  hitTarget = null;
+  document.elementFromPoint = () => hitTarget;
 });
 
 afterEach(() => {
@@ -48,6 +57,7 @@ function render(graph) {
           onNodeMove: noop,
           onNodeAdd: noop,
           onConnect: noop,
+          onConnectNew: noop,
           onDelete: noop,
           onOpenParams: noop,
           onUpdateEdge: noop,
@@ -69,8 +79,11 @@ function portAt(nodeId, port, slot) {
   return { x: parseFloat(el.style.left), y: parseFloat(el.style.top) };
 }
 
+/** The node element carries `data-node-id` too, so ask for bubbles only. */
 const portsOf = (nodeId) =>
-  [...container.querySelectorAll(`[data-node-id="${nodeId}"]`)].map((el) => el.dataset.port);
+  [...container.querySelectorAll(`[data-node-id="${nodeId}"][data-port]`)].map(
+    (el) => el.dataset.port
+  );
 
 /** Both ends of a rendered cubic edge: "M x y C ax ay, bx by, x2 y2". */
 function edgeEnds(edgeIndex = 0) {
@@ -299,5 +312,178 @@ describe("dragging a wire", () => {
     const numbers = pending.getAttribute("d").match(/-?\d+(\.\d+)?/g).map(Number);
     expect({ x: numbers[0], y: numbers[1] }).toEqual(portAt("llm", "out"));
     expect(pending.getAttribute("stroke")).toBe("#3b82f6");
+  });
+});
+
+describe("pulling a wire out of an input bubble", () => {
+  const nodes = [
+    { id: "in", componentId: "Input", x: 40, y: 200 },
+    { id: "prompt", componentId: "PromptTemplate", x: 260, y: 200 },
+    { id: "llm", componentId: "LLM", x: 520, y: 180 },
+    { id: "out", componentId: "Output", x: 820, y: 200 },
+  ];
+
+  const at = (el, type, x, y) =>
+    act(() => {
+      el.dispatchEvent(
+        new window.MouseEvent(type, { bubbles: true, clientX: x, clientY: y })
+      );
+    });
+
+  const wrap = () => container.querySelector(".wf-canvas-wrap");
+  const bubble = (nodeId, port) =>
+    container.querySelector(`[data-node-id="${nodeId}"][data-port="${port}"]`);
+  const pendingWire = () =>
+    container.querySelector("svg.wf-edges > path[stroke-dasharray]");
+  const menu = () => container.querySelector(".wf-connect-menu");
+  const rows = () => [...container.querySelectorAll(".wf-connect-row")];
+  const rowNamed = (name) =>
+    rows().find((row) => row.querySelector(".wf-connect-row-name").textContent === name);
+
+  /** Pull a wire from a bubble and let go at (x, y) over `hit`. */
+  const pull = (nodeId, port, { x = 600, y = 420, hit = null } = {}) => {
+    at(bubble(nodeId, port), "mousedown", 10, 10);
+    at(wrap(), "mousemove", x, y);
+    hitTarget = hit;
+    at(wrap(), "mouseup", x, y);
+  };
+
+  it("draws a solid-path data wire ending on the input bubble it came from", () => {
+    render({ nodes });
+    at(bubble("llm", "in"), "mousedown", 10, 10);
+    const numbers = pendingWire().getAttribute("d").match(/-?\d+(\.\d+)?/g).map(Number);
+    // The held end is the *target*, so it is where the path ends, not starts.
+    expect({ x: numbers[6], y: numbers[7] }).toEqual(portAt("llm", "in"));
+    expect(pendingWire().getAttribute("stroke")).toBe("#3b82f6");
+    expect(pendingWire().dataset.kind).toBe("data");
+  });
+
+  it("connects to the data output of the node it is dropped on", () => {
+    const calls = [];
+    render({ nodes, props: { onConnect: (...args) => calls.push(args) } });
+    pull("llm", "in", { hit: bubble("prompt", "out") });
+    expect(calls).toEqual([["prompt", "llm", "data", undefined]]);
+  });
+
+  it("becomes an error edge when dropped on a red output bubble", () => {
+    const calls = [];
+    render({ nodes, props: { onConnect: (...args) => calls.push(args) } });
+    pull("llm", "in", { hit: bubble("prompt", "error-out") });
+    expect(calls).toEqual([["prompt", "llm", "error", undefined]]);
+  });
+
+  it("connects to a node dropped anywhere on its body", () => {
+    const calls = [];
+    render({ nodes, props: { onConnect: (...args) => calls.push(args) } });
+    const body = container.querySelector('.wf-node[data-node-id="prompt"]');
+    pull("llm", "in", { hit: body });
+    expect(calls).toEqual([["prompt", "llm", "data", undefined]]);
+  });
+
+  it("opens the connect menu when it is let go over empty canvas", () => {
+    render({ nodes });
+    expect(menu()).toBeNull();
+    pull("llm", "in");
+    expect(menu()).not.toBeNull();
+    expect(menu().textContent).toContain("into");
+    expect(menu().querySelector(".wf-connect-kind").textContent).toBe("data");
+  });
+
+  it("keeps the wire on screen while the menu decides", () => {
+    render({ nodes });
+    pull("llm", "in", { x: 600, y: 420 });
+    expect(pendingWire()).not.toBeNull();
+    expect(pendingWire().getAttribute("class")).toContain("held");
+  });
+
+  it("does not open the menu for a click that never pulled a wire", () => {
+    render({ nodes });
+    at(bubble("llm", "in"), "mousedown", 10, 10);
+    at(wrap(), "mouseup", 11, 11);
+    expect(menu()).toBeNull();
+  });
+
+  it("offers only the nodes that can feed this input", () => {
+    render({ nodes });
+    pull("llm", "in");
+    const names = rows().map((row) => row.querySelector(".wf-connect-row-name").textContent);
+    expect(names).toContain("Input");
+    expect(names).toContain("Prompt");
+    // The terminal Output has no data output to offer.
+    expect(names.slice(0, 2)).not.toContain("Output");
+  });
+
+  it("connects to a node picked from the menu, wired the way it was pulled", () => {
+    const calls = [];
+    render({ nodes, props: { onConnect: (...args) => calls.push(args) } });
+    pull("llm", "in");
+    act(() => rowNamed("Prompt").click());
+    expect(calls).toEqual([["prompt", "llm", "data", undefined]]);
+    expect(menu()).toBeNull();
+  });
+
+  it("creates a node from the menu and drops it on the wire's loose end", () => {
+    const created = [];
+    render({ nodes, props: { onConnectNew: (...args) => created.push(args) } });
+    pull("llm", "in", { x: 610, y: 430 });
+    act(() => rowNamed("Error Log").click());
+    expect(created).toHaveLength(1);
+    const [componentId, origin, link] = created[0];
+    expect(componentId).toBe("ErrorLog");
+    // The new node's data output lands exactly where the wire was let go.
+    expect(origin).toEqual(nodeOriginForPort({ x: 610, y: 430 }, getComponentMeta("ErrorLog"), "out"));
+    expect(link).toEqual({
+      anchorId: "llm",
+      direction: "reverse",
+      kind: "data",
+      slot: undefined,
+    });
+  });
+
+  it("closes on Escape without connecting", () => {
+    const calls = [];
+    render({ nodes, props: { onConnect: (...args) => calls.push(args) } });
+    pull("llm", "in");
+    act(() => {
+      window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(menu()).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  it("closes when the canvas behind it is clicked", () => {
+    render({ nodes });
+    pull("llm", "in");
+    act(() => {
+      container
+        .querySelector(".wf-connect-backdrop")
+        .dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    });
+    expect(menu()).toBeNull();
+  });
+
+  it("opens the same menu for a wire pulled forward out of an output", () => {
+    render({ nodes });
+    pull("prompt", "out");
+    expect(menu().textContent).toContain("from");
+    const names = rows().map((row) => row.querySelector(".wf-connect-row-name").textContent);
+    expect(names).toContain("LLM");
+    expect(names).toContain("Output");
+  });
+
+  it("carries the error kind into the menu when pulled from the red bubble", () => {
+    render({ nodes });
+    pull("prompt", "error-out");
+    expect(menu().querySelector(".wf-connect-kind").textContent).toBe("error");
+    expect(menu().querySelector(".wf-connect-kind").className).toContain("error");
+  });
+
+  it("names the slot when a wire is pulled out of a config bubble", () => {
+    render({ nodes });
+    pull("llm", "config-in");
+    expect(menu().textContent).toContain("tracer");
+    const names = rows().map((row) => row.querySelector(".wf-connect-row-name").textContent);
+    expect(names).toContain("Langfuse");
+    expect(names).not.toContain("Prompt");
   });
 });

@@ -118,8 +118,37 @@ export function targetPortPos(node, kind, slot, meta) {
 }
 
 /**
- * Every bubble a node renders, positioned. The canvas maps straight over this,
- * so "does this node show both outputs?" is answerable without a browser.
+ * Where to put a new node so that one of its bubbles lands on `point`.
+ *
+ * A wire dropped on empty canvas can create the node it was looking for; the
+ * node should arrive already touching the wire's loose end rather than
+ * somewhere near it.
+ */
+export function nodeOriginForPort(point, meta, port) {
+  const { w, h } = sizeFor(meta);
+  switch (port) {
+    case PORT_IN:
+      return { x: point.x, y: point.y - h / 2 };
+    case PORT_DATA_OUT:
+      return { x: point.x - w, y: point.y - h / 2 };
+    case PORT_ERROR_OUT:
+      return { x: point.x - w, y: point.y - h / 2 - ERROR_PORT_DROP };
+    case PORT_CONFIG_OUT:
+      return { x: point.x - w / 2, y: point.y };
+    case PORT_CONFIG_IN:
+      return { x: point.x - w / 2, y: point.y - h };
+    default:
+      return { x: point.x, y: point.y };
+  }
+}
+
+/**
+ * Every bubble a node renders, positioned and wired.
+ *
+ * `direction` says which end of an edge the bubble holds, so a drag can start
+ * anywhere: from an output the anchor is the edge's source ("forward"), from
+ * an input it is the edge's target ("reverse") and the user is looking for
+ * something to feed it.
  */
 export function portsForNode(node, meta) {
   const resolved = metaFor(node, meta);
@@ -130,8 +159,10 @@ export function portsForNode(node, meta) {
     ports.push({
       key: `${node.id}:${PORT_IN}`,
       port: PORT_IN,
+      wireKind: "data",
+      direction: "reverse",
       className: "wf-port-in",
-      title: "Data input",
+      title: "Data input — drag to wire a node into this one",
       ...dataPortPos(node, "in", resolved),
     });
   }
@@ -140,6 +171,7 @@ export function portsForNode(node, meta) {
       key: `${node.id}:${PORT_DATA_OUT}`,
       port: PORT_DATA_OUT,
       wireKind: "data",
+      direction: "forward",
       className: "wf-port-out",
       title: "Data output — the normal result of this node",
       ...dataPortPos(node, "out", resolved),
@@ -150,6 +182,7 @@ export function portsForNode(node, meta) {
       key: `${node.id}:${PORT_ERROR_OUT}`,
       port: PORT_ERROR_OUT,
       wireKind: "error",
+      direction: "forward",
       className: "wf-port-error-out",
       title: "Error output — runs instead when this node fails",
       ...errorOutPortPos(node, resolved),
@@ -160,6 +193,7 @@ export function portsForNode(node, meta) {
       key: `${node.id}:${PORT_CONFIG_OUT}`,
       port: PORT_CONFIG_OUT,
       wireKind: "config",
+      direction: "forward",
       className: "wf-port-config-out",
       title: `Config output — attach ${resolved.name} to a container slot`,
       ...configOutPortPos(node, resolved),
@@ -170,6 +204,8 @@ export function portsForNode(node, meta) {
     ports.push({
       key: `${node.id}:${PORT_CONFIG_IN}:${slot.name}`,
       port: PORT_CONFIG_IN,
+      wireKind: "config",
+      direction: "reverse",
       slot: slot.name,
       label: slot.label || slot.name,
       className: "wf-port-config-in",

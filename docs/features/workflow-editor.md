@@ -57,6 +57,7 @@ Implemented in `components/Canvas.jsx`.
   - Port hit-testing uses `document.elementFromPoint` during wire dragging, so connections work
     at any pan/zoom. The port layer is `pointer-events: none` so panning still works through
     it, and dropping a provider on a container's own bubble still nests it in the container.
+    A node is dragged by its body — every bubble is a wire origin, not a handle.
 - **Edges** are cubic-bezier SVG paths:
   - **Data edges** (default `kind: "data"`): left-in → right-out, black arrow marker.
   - **Error edges** (`kind: "error"`): from the red `error-out` bubble on the node's lower right
@@ -72,6 +73,42 @@ Implemented in `components/Canvas.jsx`.
   - A pending wire renders as a dashed live path while you drag.
   - Edges can be selected and deleted, and a data/error edge can be re-typed or given a `when`
     predicate in the edge editor popover.
+
+### Wiring
+
+Every bubble starts a wire, in the direction that bubble implies (`portsForNode` carries a
+`direction`; `DROP_SELECTOR` in `Canvas.jsx` maps it to what the far end may land on):
+
+| Pulled from | Direction | Looking for | Edge |
+|---|---|---|---|
+| `out` | forward — the node is the **source** | a target's `in` | data |
+| `error-out` | forward | a target's `in` | error |
+| `config-out` | forward | a container's `config-in` | config |
+| `in` | reverse — the node is the **target** | a source's `out`, or its `error-out` | data, or error if dropped on the red bubble |
+| `config-in` | reverse | an aux node's `config-out` | config, into the slot it was pulled from |
+
+A wire released **on a bubble** connects to it; released **on a node body** it connects to that
+node's matching bubble (a forward config wire is the exception — with more than one slot the
+menu asks which). Released on **empty canvas** it opens the connect menu instead of vanishing.
+A click that never pulled the wire more than 4px is not a drop, so a stray click on a bubble
+does nothing.
+
+### Connect menu
+
+`components/ConnectMenu.jsx`, fed by `catalog/connect-candidates.js`.
+
+- Opens where the wire was let go, holding the wire on screen (dimmed) so the choice still reads
+  as "this wire goes to …". It lives in the canvas wrap, not the transformed inner layer, so it
+  keeps its size at any zoom, and it is clamped to stay inside the canvas.
+- **On this canvas** lists the nodes the wire may legally join; **Add a node** lists the
+  components it can create *and* wire in one commit — so one undo takes back both. Both lists
+  come from running the real `checkConnection` gate (against a probe node for the components),
+  so the menu can never offer a connection the canvas would then refuse. Providers and
+  `planned` components are left out of the create list: neither can stand on its own.
+- A config wire lists one row per slot that accepts the source, labelled with the slot name.
+- A created node is placed by `nodeOriginForPort` so the bubble the wire needs lands exactly on
+  the wire's loose end.
+- Type to filter, `↑`/`↓` to move, `Enter` to connect, `Esc` or a click on the backdrop to cancel.
 
 ### Connection rules
 
