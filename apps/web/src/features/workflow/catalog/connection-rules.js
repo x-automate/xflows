@@ -1,4 +1,7 @@
 import { getComponentMeta } from "./catalog-meta.js";
+import { hasDataIn, hasDataOut, hasErrorOut, isAuxOnly } from "./port-model.js";
+
+export { isAuxOnly };
 
 /**
  * Connection rules for the canvas.
@@ -6,24 +9,14 @@ import { getComponentMeta } from "./catalog-meta.js";
  * Until now `connect()` accepted any source/target pair and the graph was only
  * judged afterwards by `validateWorkflow`. That let the editor draw edges the
  * engine silently drops (config edges) or that can never carry data (an edge
- * into an Input, an edge out of an Output), and it made a mis-grabbed error
- * port look like a broken data wire instead of a rejected one.
+ * into an Input, a data edge out of an Output), and it made a mis-grabbed
+ * error port look like a broken data wire instead of a rejected one.
  *
  * `checkConnection` is the single gate the canvas asks before an edge exists.
  */
 
 function metaOf(node) {
   return node ? getComponentMeta(node.componentId) : null;
-}
-
-/**
- * Nodes that never take part in the data flow — they attach to a container's
- * config slot instead. This is `kind === "aux"`, not a category: `TraceLog` is
- * categorised Observability but is an ordinary inline transform with real data
- * ports, and gating on the category refused perfectly valid wires into it.
- */
-export function isAuxOnly(meta) {
-  return meta?.kind === "aux";
 }
 
 function reachable(edges, fromId, toId) {
@@ -105,18 +98,25 @@ export function checkConnection({ nodes, edges, source, target, kind = "data", s
     return { ok: true };
   }
 
-  // data + error edges share the same port topology rules.
-  if (targetMeta.kind === "input") {
-    return { ok: false, reason: `"${targetMeta.name}" is an entry point and takes no input.` };
-  }
-  if (sourceMeta.kind === "output") {
-    return { ok: false, reason: `"${sourceMeta.name}" is terminal and produces no output.` };
-  }
+  // Data and error edges share one topology, read off the same port model the
+  // canvas draws: an edge may only start where its source shows an output
+  // bubble and land where its target shows an input bubble. The one asymmetry
+  // is the terminal Output — it produces no data, but it still executes and so
+  // can still fail, which is why it carries an error output and nothing else.
   if (isAuxOnly(sourceMeta) || isAuxOnly(targetMeta)) {
     const auxName = isAuxOnly(sourceMeta) ? sourceMeta.name : targetMeta.name;
     return {
       ok: false,
       reason: `"${auxName}" attaches to a config slot, not to the data flow.`,
+    };
+  }
+  if (!hasDataIn(targetMeta)) {
+    return { ok: false, reason: `"${targetMeta.name}" is an entry point and takes no input.` };
+  }
+  if (kind === "error" ? !hasErrorOut(sourceMeta) : !hasDataOut(sourceMeta)) {
+    return {
+      ok: false,
+      reason: `"${sourceMeta.name}" is terminal and produces no data output.`,
     };
   }
   if (reachable(edges, target, source)) {

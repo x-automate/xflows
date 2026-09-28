@@ -26,28 +26,41 @@ Implemented in `components/Canvas.jsx`.
   the `+ / − / Reset` controls; plain wheel scrolls. Zoom % is shown in the canvas controls.
 - The viewport is applied as `transform: translate(x, y) scale(k)` on the canvas inner element;
   a 6000×6000 SVG layer holds all edges; a grid background scales with zoom.
-- **Nodes** are absolutely-positioned divs: 132×46 px for regular nodes, 200×110 px for
+- **Nodes** are absolutely-positioned divs: 132×56 px for regular nodes, 200×110 px for
   containers. Each shows its icon (inline SVG from the catalog), name, category, and — during
   runs — a live badge (spinner, duration in ms, or failed marker).
-- **Ports** are gated on the component's `kind`, never on its category. Every node that
-  executes offers the *same two outputs*, because any executor can throw:
+- **Ports** are declared by `catalog/port-model.js` and gated on the component's `kind`, never
+  on its category. Every node that executes offers the *same two outputs*, because any
+  executor can throw:
   - `in` — left edge, mid-height. Absent on `input` kinds (Input and the triggers).
-  - `out` — right edge, mid-height, black. The node's normal result.
-  - `error-out` — right edge, 20px lower, red. Runs instead when the node throws.
-  - Two structural exceptions: an `output` kind is the terminal sink and has no outputs at
-    all, and an `aux` kind (Langfuse, LangSmith, Tracer, Guardrail, Vector DB) attaches to a
-    container's config slot rather than to the data flow, so it has no data ports.
+  - `out` — right edge, mid-height, black. The node's normal result; solid wires.
+  - `error-out` — right edge, `ERROR_PORT_DROP` (18px) lower, red. Taken instead when the node
+    throws; dashed wires. Present on *every* node that runs — triggers and the terminal
+    `Output` included, since an Output that fails to deliver is still a failure worth routing.
+  - One structural exception: an `aux` kind (Langfuse, LangSmith, Tracer, Guardrail, Vector DB)
+    attaches to a container's config slot rather than to the data flow, so instead of data and
+    error bubbles it carries a single config bubble. `Output` is the one node with an error
+    output but no data output: it is the terminal sink, so nothing runs after it on success.
   - Category is *not* the gate: `TraceLog` and `ErrorLog` are categorised Observability but
     are ordinary inline transforms with full data ports. Gating on the category stripped them.
   - Config ports: a top-center `config-out` on any node whose category some container slot
     accepts (derived from the registry, not hardcoded), and labeled `config-in` slots along a
     container's bottom edge (declared by the container's `configs`).
+  - Bubbles render in their own `.wf-ports-layer` above the nodes, each placed at the canvas
+    coordinate `portsForNode()` returns and centred on it with `translate(-50%, -50%)`. The
+    stylesheet sets no offsets at all, and `sourcePortPos()` / `targetPortPos()` place the wire
+    ends from the same functions, so a wire cannot drift off the bubble it leaves. (It used to:
+    a `.wf-port` block declared *after* `.wf-port-error-out` won the cascade on equal
+    specificity, which parked every error bubble invisibly under its data bubble while the
+    error edge was still drawn 20px below. `workflow-css.test.js` resolves the cascade and
+    fails if any rule sets a port offset again.)
   - Port hit-testing uses `document.elementFromPoint` during wire dragging, so connections work
-    at any pan/zoom.
+    at any pan/zoom. The port layer is `pointer-events: none` so panning still works through
+    it, and dropping a provider on a container's own bubble still nests it in the container.
 - **Edges** are cubic-bezier SVG paths:
   - **Data edges** (default `kind: "data"`): left-in → right-out, black arrow marker.
-  - **Error edges** (`kind: "error"`): from the red `error-out` port on the node's lower right
-    to a target's data-in, red (`#dc2626`) and dashed. Taken when the source node raises. The
+  - **Error edges** (`kind: "error"`): from the red `error-out` bubble on the node's lower right
+    to a target's data-in bubble, red (`#dc2626`) and dashed. Taken when the source node raises. The
     payload delivered is `{"value": "", "error": {message, nodeId, componentId}}` — note the
     blank `value`, which is why a plain `PromptTemplate` on an error branch renders nothing
     useful. Wire the branch into an **Error Log** node instead: it reads the error envelope,
@@ -68,7 +81,7 @@ connection flashes the reason as a toast and nothing is drawn. `checkConnection`
 | Rule | Applies to |
 |---|---|
 | target is an `input`-kind node | data, error |
-| source is an `output`-kind node | data, error |
+| source is an `output`-kind node | data only — an Output can still route its own failure |
 | either end is an Observability node (they attach to config slots) | data, error |
 | either end is a nested provider (wire the container instead) | data, error, config |
 | source and target are the same node | all |

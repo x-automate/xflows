@@ -2,29 +2,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CATEGORY_COLORS,
   XFLOWS_ICONS,
-  canSourceConfigEdge,
   getComponentMeta,
 } from "../catalog/catalog-meta";
-
-const NODE_W = 132;
-const NODE_H = 46;
-const CONT_W = 200;
-const CONT_H = 110;
-const PORT_SIZE = 10;
-const CONFIG_PORT_SIZE = 9;
-const PORT_OVERHANG = 6;
-// The rendered dot sits `PORT_OVERHANG` outside the node edge and is
-// `PORT_SIZE` across, so its centre is 1px beyond the edge. Wire endpoints
-// use the same number, otherwise an edge visibly misses its own port.
-const PORT_CENTER = PORT_OVERHANG - PORT_SIZE / 2;
-// Vertical drop of the error port below the data port; must match
-// `.wf-port-error-out { top: calc(50% + ERROR_PORT_DROP) }` in workflow.css.
-const ERROR_PORT_DROP = 20;
-
-function sizeFor(meta) {
-  if (meta?.kind === "container") return { w: CONT_W, h: CONT_H };
-  return { w: NODE_W, h: NODE_H };
-}
+import {
+  NODE_H,
+  NODE_W,
+  portsForNode,
+  sizeFor,
+  sourcePortPos,
+  targetPortPos,
+} from "../catalog/port-model";
 
 function Canvas({
   nodes,
@@ -49,6 +36,7 @@ function Canvas({
     [nodes]
   );
   const metaOf = (node) => getComponentMeta(node.componentId);
+  const topLevelNodes = nodes.filter((node) => !node.parent);
 
   const onWheel = (event) => {
     event.preventDefault();
@@ -70,6 +58,19 @@ function Canvas({
     }
   };
 
+  /**
+   * Ports render in their own layer above the nodes, so a pointer over a
+   * bubble no longer sits inside the node element. Fall back to the bubble's
+   * owner so dropping a provider on a container's edge still lands in it.
+   */
+  const containerIdAt = (el) => {
+    const containerEl = el?.closest?.("[data-container-id]");
+    if (containerEl) return containerEl.dataset.containerId;
+    const portEl = el?.closest?.("[data-port]");
+    const owner = portEl ? nodeById[portEl.dataset.nodeId] : null;
+    return owner && metaOf(owner)?.kind === "container" ? owner.id : null;
+  };
+
   const onDrop = (event) => {
     event.preventDefault();
     const componentId = event.dataTransfer.getData("component-id");
@@ -78,9 +79,7 @@ function Canvas({
     const x = (event.clientX - rect.left - view.x) / view.k - NODE_W / 2;
     const y = (event.clientY - rect.top - view.y) / view.k - NODE_H / 2;
     const el = document.elementFromPoint(event.clientX, event.clientY);
-    const containerEl = el?.closest?.("[data-container-id]");
-    const targetId = containerEl?.dataset?.containerId || null;
-    onNodeAdd(componentId, { x, y }, targetId);
+    onNodeAdd(componentId, { x, y }, containerIdAt(el));
   };
 
   const onMouseDown = (event) => {
@@ -120,26 +119,16 @@ function Canvas({
     setDrag(null);
     if (pendingWire) {
       const el = document.elementFromPoint(event.clientX, event.clientY);
-      if (pendingWire.kind === "data") {
-        const target = el?.closest?.("[data-port='in']");
-        if (target && target.dataset.nodeId !== pendingWire.from) {
-          onConnect(pendingWire.from, target.dataset.nodeId, "data");
-        }
-      } else if (pendingWire.kind === "error") {
-        const target = el?.closest?.("[data-port='in']");
-        if (target && target.dataset.nodeId !== pendingWire.from) {
-          onConnect(pendingWire.from, target.dataset.nodeId, "error");
-        }
-      } else if (pendingWire.kind === "config") {
-        const target = el?.closest?.("[data-port='config-in']");
-        if (target && target.dataset.nodeId !== pendingWire.from) {
-          onConnect(
-            pendingWire.from,
-            target.dataset.nodeId,
-            "config",
-            target.dataset.slot
-          );
-        }
+      const dropSelector =
+        pendingWire.kind === "config" ? "[data-port='config-in']" : "[data-port='in']";
+      const target = el?.closest?.(dropSelector);
+      if (target && target.dataset.nodeId !== pendingWire.from) {
+        onConnect(
+          pendingWire.from,
+          target.dataset.nodeId,
+          pendingWire.kind,
+          target.dataset.slot
+        );
       }
       setPendingWire(null);
     }
@@ -154,48 +143,6 @@ function Canvas({
     return () => window.removeEventListener("mouseup", stop);
   }, []);
 
-  const dataPortPos = (node, side) => {
-    const size = sizeFor(metaOf(node));
-    const x =
-      side === "in" ? node.x - PORT_CENTER : node.x + size.w + PORT_CENTER;
-    return { x, y: node.y + size.h / 2 };
-  };
-
-  const configOutPortPos = (node) => {
-    const size = sizeFor(metaOf(node));
-    return {
-      x: node.x + size.w / 2,
-      y: node.y - PORT_CENTER,
-    };
-  };
-
-  // y offset must match `.wf-port-error-out { top: calc(50% + ERROR_PORT_DROP) }` in
-  // workflow.css, otherwise the drawn edge starts several px away from the port it
-  // claims to leave.
-  const errorOutPortPos = (node) => {
-    const size = sizeFor(metaOf(node));
-    return {
-      x: node.x + size.w + PORT_CENTER,
-      y: node.y + size.h / 2 + ERROR_PORT_DROP,
-    };
-  };
-
-  const configPortPos = (node, slotIdx, totalSlots) => {
-    const size = sizeFor(metaOf(node));
-    const step = size.w / (totalSlots + 1);
-    return {
-      x: node.x + step * (slotIdx + 1),
-      y: node.y + size.h + PORT_OVERHANG - CONFIG_PORT_SIZE / 2,
-    };
-  };
-
-  const portPosFor = (node, kind) =>
-    kind === "config"
-      ? configOutPortPos(node)
-      : kind === "error"
-        ? errorOutPortPos(node)
-        : dataPortPos(node, "out");
-
   const edgePath = (a, b, vertical = false) => {
     if (vertical) {
       const dy = Math.max(30, Math.abs(b.y - a.y) * 0.5);
@@ -206,10 +153,19 @@ function Canvas({
     return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`;
   };
 
-  const startWire = (event, nodeId, kind) => {
+  const beginNodeDrag = (event, node) => {
     event.stopPropagation();
-    const p = portPosFor(nodeById[nodeId], kind);
-    setPendingWire({ from: nodeId, kind, sx: p.x, sy: p.y, tx: p.x, ty: p.y });
+    onSelect(node.id);
+    const rect = wrapRef.current.getBoundingClientRect();
+    const ox = (event.clientX - rect.left - view.x) / view.k - node.x;
+    const oy = (event.clientY - rect.top - view.y) / view.k - node.y;
+    setDrag({ type: "node", id: node.id, ox, oy });
+  };
+
+  const startWire = (event, node, kind) => {
+    event.stopPropagation();
+    const p = sourcePortPos(node, kind);
+    setPendingWire({ from: node.id, kind, sx: p.x, sy: p.y, tx: p.x, ty: p.y });
   };
 
   return (
@@ -253,26 +209,18 @@ function Canvas({
             const sourceNode = nodeById[edge.source];
             const targetNode = nodeById[edge.target];
             if (!sourceNode || !targetNode) return null;
-            const isConfig = edge.kind === "config";
-            const isError = edge.kind === "error";
-            let sourcePort;
-            let targetPort;
-            if (isConfig) {
-              const targetMeta = metaOf(targetNode);
-              const slots = targetMeta?.configs || [];
-              const idx = Math.max(
-                0,
-                slots.findIndex((slot) => slot.name === edge.slot)
-              );
-              sourcePort = configOutPortPos(sourceNode);
-              targetPort = configPortPos(targetNode, idx, slots.length || 1);
-            } else if (isError) {
-              sourcePort = errorOutPortPos(sourceNode);
-              targetPort = dataPortPos(targetNode, "in");
-            } else {
-              sourcePort = dataPortPos(sourceNode, "out");
-              targetPort = dataPortPos(targetNode, "in");
-            }
+            const kind = edge.kind || "data";
+            const isConfig = kind === "config";
+            const isError = kind === "error";
+            // Same functions the port bubbles are placed with, so an endpoint
+            // is always the centre of the bubble it belongs to.
+            const sourcePort = sourcePortPos(sourceNode, kind, metaOf(sourceNode));
+            const targetPort = targetPortPos(
+              targetNode,
+              kind,
+              edge.slot,
+              metaOf(targetNode)
+            );
             return (
               <g key={edge.id}>
                 <path
@@ -318,45 +266,77 @@ function Canvas({
           )}
         </svg>
 
-        {nodes
-          .filter((node) => !node.parent)
-          .map((node) => {
-            const meta = metaOf(node);
-            if (!meta) return null;
-            const color = CATEGORY_COLORS[meta.category];
-            const status = node.runStatus;
-            const isAux = meta.kind === "aux";
-            const isContainer = meta.kind === "container";
-            const configs = meta.configs || [];
-            const size = sizeFor(meta);
-            const child = isContainer
-              ? nodes.find((item) => item.parent === node.id)
-              : null;
-            const childMeta = child ? metaOf(child) : null;
-            const childColor = childMeta ? CATEGORY_COLORS[childMeta.category] : null;
-            const childStatus = child?.runStatus;
-            const dataAttrs = isContainer ? { "data-container-id": node.id } : {};
-            return (
-              <div
-                key={node.id}
-                {...dataAttrs}
-                className={`wf-node${isContainer ? " wf-container" : ""}${
-                  selected === node.id ? " selected" : ""
-                }${status ? ` run-${status}` : ""}${isAux ? " wf-aux" : ""}`}
-                style={{ left: node.x, top: node.y, width: size.w, height: size.h }}
-                onMouseDown={(event) => {
-                  event.stopPropagation();
-                  onSelect(node.id);
-                  const rect = wrapRef.current.getBoundingClientRect();
-                  const ox = (event.clientX - rect.left - view.x) / view.k - node.x;
-                  const oy = (event.clientY - rect.top - view.y) / view.k - node.y;
-                  setDrag({ type: "node", id: node.id, ox, oy });
-                }}
-                onDoubleClick={() => onOpenParams(node.id)}
-                title={`${meta.name} - ${meta.desc}`}
-              >
-                {!isContainer && (
-                  <>
+        {topLevelNodes.map((node) => {
+          const meta = metaOf(node);
+          if (!meta) return null;
+          const color = CATEGORY_COLORS[meta.category];
+          const status = node.runStatus;
+          const isAux = meta.kind === "aux";
+          const isContainer = meta.kind === "container";
+          const size = sizeFor(meta);
+          const child = isContainer
+            ? nodes.find((item) => item.parent === node.id)
+            : null;
+          const childMeta = child ? metaOf(child) : null;
+          const childColor = childMeta ? CATEGORY_COLORS[childMeta.category] : null;
+          const childStatus = child?.runStatus;
+          const dataAttrs = isContainer ? { "data-container-id": node.id } : {};
+          return (
+            <div
+              key={node.id}
+              {...dataAttrs}
+              data-node="1"
+              className={`wf-node${isContainer ? " wf-container" : ""}${
+                selected === node.id ? " selected" : ""
+              }${status ? ` run-${status}` : ""}${isAux ? " wf-aux" : ""}`}
+              style={{ left: node.x, top: node.y, width: size.w, height: size.h }}
+              onMouseDown={(event) => beginNodeDrag(event, node)}
+              onDoubleClick={() => onOpenParams(node.id)}
+              title={`${meta.name} - ${meta.desc}`}
+            >
+              {!isContainer && (
+                <>
+                  <div
+                    className="wf-node-icon"
+                    style={{
+                      background: color.bg,
+                      color: color.fg,
+                      borderColor: color.dot,
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: XFLOWS_ICONS[meta.icon] || "",
+                    }}
+                  />
+                  <div className="wf-node-label">
+                    <div className="wf-node-name">{meta.name}</div>
+                    <div className="wf-node-meta">
+                      {status === "running" && (
+                        <span className="wf-run-mini running">
+                          <span className="wf-spinner sm" />
+                        </span>
+                      )}
+                      {status === "success" && (
+                        <span className="wf-run-mini ok">
+                          {" "}
+                          {node.duration != null ? `${Math.round(node.duration)}ms` : "ok"}
+                        </span>
+                      )}
+                      {status === "error" && <span className="wf-run-mini err">failed</span>}
+                      {status === "skipped" && (
+                        <span className="wf-run-mini skip">skipped</span>
+                      )}
+                      {!status && (
+                        <span className="wf-node-cat" style={{ color: color.fg }}>
+                          {meta.category}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+              {isContainer && (
+                <div className="wf-container-inner">
+                  <div className="wf-container-head">
                     <div
                       className="wf-node-icon"
                       style={{
@@ -368,147 +348,87 @@ function Canvas({
                         __html: XFLOWS_ICONS[meta.icon] || "",
                       }}
                     />
-                    <div className="wf-node-label">
-                      <div className="wf-node-name">{meta.name}</div>
-                      <div className="wf-node-meta">
-                        {status === "running" && (
-                          <span className="wf-run-mini running">
-                            <span className="wf-spinner sm" />
-                          </span>
-                        )}
-                        {status === "success" && (
-                          <span className="wf-run-mini ok">
-                            {" "}
-                            {node.duration != null ? `${Math.round(node.duration)}ms` : "ok"}
-                          </span>
-                        )}
-                        {status === "error" && <span className="wf-run-mini err">failed</span>}
-                        {status === "skipped" && (
-                          <span className="wf-run-mini skip">skipped</span>
-                        )}
-                        {!status && (
-                          <span className="wf-node-cat" style={{ color: color.fg }}>
-                            {meta.category}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                )}
-                {isContainer && (
-                  <div className="wf-container-inner">
-                    <div className="wf-container-head">
+                    <div className="wf-container-title">{meta.name}</div>
+                  </div>
+                  {child && childMeta ? (
+                    <div
+                      className={`wf-inner-chip${selected === child.id ? " selected" : ""}${
+                        childStatus ? ` run-${childStatus}` : ""
+                      }`}
+                      onMouseDown={(event) => {
+                        event.stopPropagation();
+                        onSelect(child.id);
+                      }}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation();
+                        onOpenParams(child.id);
+                      }}
+                    >
                       <div
-                        className="wf-node-icon"
+                        className="wf-inner-icon"
                         style={{
-                          background: color.bg,
-                          color: color.fg,
-                          borderColor: color.dot,
+                          background: childColor.bg,
+                          color: childColor.fg,
+                          borderColor: childColor.dot,
                         }}
                         dangerouslySetInnerHTML={{
-                          __html: XFLOWS_ICONS[meta.icon] || "",
+                          __html: XFLOWS_ICONS[childMeta.icon] || "",
                         }}
                       />
-                      <div className="wf-container-title">{meta.name}</div>
-                    </div>
-                    {child && childMeta ? (
-                      <div
-                        className={`wf-inner-chip${selected === child.id ? " selected" : ""}${
-                          childStatus ? ` run-${childStatus}` : ""
-                        }`}
-                        onMouseDown={(event) => {
+                      <div className="wf-inner-name">{childMeta.name}</div>
+                      <button
+                        className="wf-inner-x"
+                        onClick={(event) => {
                           event.stopPropagation();
-                          onSelect(child.id);
+                          onDelete(child.id);
                         }}
-                        onDoubleClick={(event) => {
-                          event.stopPropagation();
-                          onOpenParams(child.id);
-                        }}
+                        title="Remove provider"
                       >
-                        <div
-                          className="wf-inner-icon"
-                          style={{
-                            background: childColor.bg,
-                            color: childColor.fg,
-                            borderColor: childColor.dot,
-                          }}
-                          dangerouslySetInnerHTML={{
-                            __html: XFLOWS_ICONS[childMeta.icon] || "",
-                          }}
-                        />
-                        <div className="wf-inner-name">{childMeta.name}</div>
-                        <button
-                          className="wf-inner-x"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onDelete(child.id);
-                          }}
-                          title="Remove provider"
-                        >
-                          x
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="wf-inner-drop">Drop a provider here</div>
-                    )}
-                  </div>
-                )}
-
-                {/* Ports are gated on `kind`, never on category. Every node that
-                    executes offers the same two outputs — data and error — so the
-                    model is uniform: any executor can throw, triggers included.
-                    The two exceptions are structural, not stylistic: an `output`
-                    node is the terminal sink and produces nothing downstream, and
-                    an `aux` node attaches to a container's config slot rather than
-                    to the data flow. */}
-                {!isAux && meta.kind !== "input" && (
-                  <div className="wf-port wf-port-in" data-port="in" data-node-id={node.id} />
-                )}
-                {!isAux && meta.kind !== "output" && (
-                  <>
-                    <div
-                      className="wf-port wf-port-out"
-                      data-port="out"
-                      data-node-id={node.id}
-                      onMouseDown={(event) => startWire(event, node.id, "data")}
-                      title="Data output - the normal result of this node"
-                    />
-                    <div
-                      className="wf-port wf-port-error-out"
-                      data-port="error-out"
-                      data-node-id={node.id}
-                      onMouseDown={(event) => startWire(event, node.id, "error")}
-                      title="Error output - runs instead when this node fails"
-                    />
-                  </>
-                )}
-                {canSourceConfigEdge(meta) && (
-                  <div
-                    className="wf-port wf-port-config-out"
-                    data-port="config-out"
-                    data-node-id={node.id}
-                    onMouseDown={(event) => startWire(event, node.id, "config")}
-                  />
-                )}
-                {configs.map((slot, idx) => {
-                  const step = 100 / (configs.length + 1);
-                  return (
-                    <div
-                      key={slot.name}
-                      className="wf-port wf-port-config-in"
-                      data-port="config-in"
-                      data-node-id={node.id}
-                      data-slot={slot.name}
-                      style={{ left: `${step * (idx + 1)}%` }}
-                      title={`${slot.label || slot.name} (accepts ${slot.accepts.join(", ")})`}
-                    >
-                      <span className="wf-slot-label">{slot.label || slot.name}</span>
+                        x
+                      </button>
                     </div>
-                  );
-                })}
+                  ) : (
+                    <div className="wf-inner-drop">Drop a provider here</div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Ports live above the nodes in canvas coordinates rather than inside
+            the node box. `portsForNode` places the bubble and `sourcePortPos` /
+            `targetPortPos` place the wire ends, so the two cannot drift apart
+            the way a CSS offset and a JS constant did. Which bubbles a node
+            gets is decided by `kind`, never by category: every executing node
+            offers both outputs — data and error — because any executor can
+            throw, triggers and the terminal Output included. Aux nodes are the
+            one exception: they attach to a container's config slot, so they
+            carry a config bubble instead. */}
+        <div className="wf-ports-layer">
+          {topLevelNodes.map((node) => {
+            const meta = metaOf(node);
+            if (!meta) return null;
+            return portsForNode(node, meta).map((port) => (
+              <div
+                key={port.key}
+                className={`wf-port ${port.className}`}
+                data-port={port.port}
+                data-node-id={node.id}
+                data-slot={port.slot}
+                style={{ left: port.x, top: port.y }}
+                title={port.title}
+                onMouseDown={(event) =>
+                  port.wireKind
+                    ? startWire(event, node, port.wireKind)
+                    : beginNodeDrag(event, node)
+                }
+              >
+                {port.label && <span className="wf-slot-label">{port.label}</span>}
               </div>
-            );
+            ));
           })}
+        </div>
       </div>
 
       <div className="wf-canvas-controls">
