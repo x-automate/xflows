@@ -23,6 +23,8 @@ POC files from repository root should be migrated into this app incrementally:
 - `styles.css` -> `src/features/workflow/workflow.css` (ported with `wf-` namespace)
 - `catalog.js` -> `src/features/workflow/catalog/catalog-meta.js` (frontend metadata only)
 - `codegen.js` -> `src/lib/api/workflowApi.js` + backend orchestration (browser execution removed)
+- `projects-home.jsx` -> `src/features/projects/ProjectsHome.jsx` (ported, live run stats)
+- `styles-home.css` -> `src/features/projects/projects.css` (ported with `ph-` namespace)
 
 ## Remaining Follow-ups
 

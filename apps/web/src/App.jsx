@@ -1,11 +1,11 @@
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
-import Dashboard from "./pages/Dashboard";
 import ProjectConfigs from "./pages/ProjectConfigs";
 import ProjectLayout from "./pages/ProjectLayout";
 import ProjectLogs from "./pages/ProjectLogs";
 import ProjectRun from "./pages/ProjectRun";
 import ProjectTriggers from "./pages/ProjectTriggers";
 import ProjectView from "./pages/ProjectView";
+import Projects from "./pages/Projects";
 import Status from "./pages/Status";
 import WorkflowEditor from "./pages/WorkflowEditor";
 
@@ -15,8 +15,8 @@ function App() {
       <header className="topbar">
         <div className="brand">XFlows</div>
         <nav className="nav">
-          <NavLink to="/dashboard" className="nav-link">
-            Dashboard
+          <NavLink to="/projects" className="nav-link">
+            Projects
           </NavLink>
           <NavLink to="/editor" className="nav-link">
             Workflow Editor
@@ -28,8 +28,9 @@ function App() {
       </header>
       <main className="content">
         <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/" element={<Navigate to="/projects" replace />} />
+          <Route path="/projects" element={<Projects />} />
+          <Route path="/dashboard" element={<Navigate to="/projects" replace />} />
           <Route path="/editor" element={<WorkflowEditor />} />
           <Route path="/status" element={<Status />} />
           <Route path="/project/:projectId" element={<ProjectLayout />}>

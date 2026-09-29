@@ -6,7 +6,7 @@ This page maps every user-facing feature of XFlows and links to its deep-dive pa
 
 | Area | Feature | Where | Deep dive |
 |---|---|---|---|
-| **Dashboard** | Create projects, list projects (remote-first with localStorage fallback), API endpoint info cards | `apps/web/src/pages/Dashboard.jsx` | [Projects](projects-configs-triggers.md#dashboard) |
+| **Projects** | Projects home: per-project run counts, success rate, last run, trigger chips; search by name/UUID, active/paused filter and toggle, new-project modal (blank or LLM starter) | `apps/web/src/features/projects/ProjectsHome.jsx` | [Projects](projects-configs-triggers.md#projects-home) |
 | **Status** | Backend health polling (`GET /health` every 10s, Temporal connectivity shown) | `apps/web/src/pages/Status.jsx` | [Projects](projects-configs-triggers.md#status-page) |
 | **Editor** | Drag-and-drop canvas: pan/zoom, data edges, config slots, containers, provider chips | `apps/web/src/features/workflow/components/Canvas.jsx` | [Workflow editor](workflow-editor.md) |
 | | Component palette: searchable, grouped by category, draggable + double-click add | `components/ComponentPanel.jsx` | [Editor](workflow-editor.md#component-panel) |
@@ -34,8 +34,9 @@ Defined in `apps/web/src/App.jsx` (react-router v6):
 
 | Route | View | Notes |
 |---|---|---|
-| `/` | → `/dashboard` | Redirect |
-| `/dashboard` | Dashboard | Project list + creation |
+| `/` | → `/projects` | Redirect |
+| `/projects` | Projects | Project list, stats + creation |
+| `/dashboard` | → `/projects` | Redirect (old name) |
 | `/editor` | WorkflowEditor | Standalone editor (no project scope) |
 | `/status` | Status | Health polling |
 | `/project/:projectId` | ProjectLayout | Tab nav (Flow / Configs / Trigger / Logs), project via outlet context |
@@ -52,7 +53,7 @@ Defined in `apps/web/src/App.jsx` (react-router v6):
 
 ### Journey 1: Build and test a workflow
 
-1. Dashboard → create project → land on Flow tab.
+1. Projects → create project → land on Flow tab.
 2. Drag nodes, connect data edges, drop a provider into the LLM container.
 3. Fix validation errors flagged in the Validation tab until the workflow is valid.
 4. Configs tab → fill required credentials (derived from the flow's nodes).

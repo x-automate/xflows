@@ -218,18 +218,25 @@ Still **[open]** for branches that do *not* pass through `ErrorLog`:
 quote the failure directly. Adding `{error}` / `{error.message}` to the
 template substitution would finish the job.
 
-## 4. Dashboard
+## 4. Dashboard **[fixed]**
 
-`pages/Dashboard.jsx` works — it lists projects from the API with a localStorage
-fallback and creates new ones — but it is a project picker, not a dashboard. Its
-three "stat cards" are hardcoded strings (`Environment: Development`,
-`API Endpoint`, `Current Focus: Web shell and live backend status integration`).
-No run counts, no success rate, no recent activity, no health.
+`pages/Dashboard.jsx` worked — it listed projects from the API with a
+localStorage fallback and created new ones — but it was a project picker, not a
+dashboard. Its three "stat cards" were hardcoded strings
+(`Environment: Development`, `API Endpoint`,
+`Current Focus: Web shell and live backend status integration`). No run counts,
+no success rate, no recent activity, no health.
 
-The data mostly exists: `GET /projects`, `GET /projects/{id}/runs`, `GET /health`
-and `GET /metrics`. What is missing is a **cross-project runs endpoint** — run
-listing is per-project only, so "last 20 runs across all projects" is an N+1 of
-project calls today. See the redesign proposal for the suggested shape.
+Replaced by `features/projects/ProjectsHome.jsx` at `/projects` (`/dashboard`
+redirects): per-project run counts, failures, success rate, last run and trigger
+chips, four real totals across the top, search, and an active/paused flag. The
+stat cards are gone.
+
+Still **[open]**: there is no **cross-project runs endpoint**. Run listing is
+per-project only, so the page pays one `GET /projects/{id}/runs` plus one
+`GET /projects/{id}/triggers` per row, and "last 20 runs across all projects"
+remains an N+1. `GET /health` and `GET /metrics` are still unused here. See the
+redesign proposal for the suggested shape.
 
 ## 5. Logs
 
