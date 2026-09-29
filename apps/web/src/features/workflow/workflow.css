@@ -176,23 +176,10 @@
   margin-top: 6px;
 }
 
+
 .wf-edge.error {
   stroke: #dc2626;
   stroke-dasharray: 6 4;
-}
-
-/* Sits clear of the data port (was 11px, close enough to grab by mistake and
-   draw a red "error" wire where a normal one was meant). Keep in sync with
-   ERROR_PORT_DROP in Canvas.jsx. */
-.wf-port-error-out {
-  top: calc(50% + 20px);
-  right: -6px;
-  border-color: #dc2626;
-  background: #fff5f5;
-}
-
-.wf-port-error-out::before {
-  content: none;
 }
 
 .wf-edge-editor {
@@ -411,25 +398,6 @@
 
 .wf-run-badge.running {
   background: #fef3c7;
-}
-
-.wf-port {
-  width: 12px;
-  height: 12px;
-  border: 1.5px solid #111827;
-  border-radius: 50%;
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  background: #fff;
-}
-
-.wf-port-in {
-  left: -7px;
-}
-
-.wf-port-out {
-  right: -7px;
 }
 
 .wf-canvas-controls {
@@ -1038,18 +1006,62 @@
   letter-spacing: 0.05em;
 }
 
+/* Ports ------------------------------------------------------------------
+   Every bubble is positioned by port-model.js, which hands the canvas an
+   inline left/top in canvas coordinates; `translate(-50%, -50%)` makes that
+   point the centre of the bubble, and the same function places the end of
+   the wire that leaves it. Nothing below may set top/right/bottom/left: an
+   offset here would move a bubble away from its own wire, which is exactly
+   how the error port ended up hidden under the data port. */
+.wf-ports-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
 .wf-port {
+  position: absolute;
   width: 10px;
   height: 10px;
-  border-color: #111827;
+  border: 1.5px solid #111827;
+  border-radius: 50%;
+  background: #fff;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  cursor: crosshair;
 }
 
+/* Data input: neutral, like the data output — an edge landing here is the
+   normal path. Pulling a wire out of it looks for a node to feed this one. */
 .wf-port-in {
-  left: -6px;
+  border-color: #111827;
+  background: #fff;
 }
 
+/* Data output: the node's normal result, drawn with solid wires. */
 .wf-port-out {
-  right: -6px;
+  border-color: #111827;
+  background: #fff;
+}
+
+/* Error output: taken instead when the node fails, drawn with dashed wires. */
+.wf-port-error-out {
+  border-color: #dc2626;
+  background: #fee2e2;
+}
+
+.wf-port-config-out,
+.wf-port-config-in {
+  border-color: #c2410c;
+  background: #fff7ed;
+}
+
+.wf-port-config-in {
+  width: 9px;
+  height: 9px;
 }
 
 .wf-port:hover {
@@ -1066,6 +1078,187 @@
 .wf-port-config-in:hover {
   background: #c2410c;
   border-color: #c2410c;
+}
+
+/* Connect menu -----------------------------------------------------------
+   Opened by a wire dropped on empty canvas. It lives in the canvas wrap, not
+   in the transformed inner layer, so it keeps its size at any zoom. */
+.wf-connect-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+}
+
+.wf-connect-menu {
+  position: absolute;
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1.5px solid #111827;
+  border-radius: 8px;
+  box-shadow: 3px 3px 0 #111827;
+  overflow: hidden;
+}
+
+.wf-connect-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.wf-connect-kind {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1.5px solid;
+  border-radius: 999px;
+  padding: 1px 7px;
+  flex-shrink: 0;
+}
+
+.wf-connect-kind.data {
+  color: #111827;
+  border-color: #111827;
+  background: #f4f4f5;
+}
+
+.wf-connect-kind.error {
+  color: #991b1b;
+  border-color: #dc2626;
+  background: #fee2e2;
+}
+
+.wf-connect-kind.config {
+  color: #9a3412;
+  border-color: #c2410c;
+  background: #fff7ed;
+}
+
+.wf-connect-title {
+  font-size: 11.5px;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-connect-title b {
+  color: #111827;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.wf-connect-search {
+  margin: 8px 8px 4px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 6px;
+  outline: none;
+}
+
+.wf-connect-search:focus {
+  border-color: #3b82f6;
+}
+
+.wf-connect-list {
+  overflow-y: auto;
+  padding: 0 4px 4px;
+}
+
+.wf-connect-group-head {
+  display: flex;
+  align-items: center;
+  padding: 7px 6px 3px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #94a3b8;
+}
+
+.wf-connect-group-count {
+  margin-left: auto;
+  color: #cbd5e1;
+}
+
+.wf-connect-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wf-connect-row.active,
+.wf-connect-row:hover {
+  background: #f0f7ff;
+}
+
+.wf-connect-row-icon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border: 1.5px solid;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+}
+
+.wf-connect-row-icon svg {
+  width: 13px;
+  height: 13px;
+  display: block;
+}
+
+.wf-connect-row-name {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-connect-row-meta {
+  margin-left: auto;
+  padding-left: 6px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.wf-connect-empty {
+  padding: 16px 10px;
+  text-align: center;
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+
+.wf-connect-foot {
+  border-top: 1px solid #e5e7eb;
+  padding: 6px 10px;
+  font-size: 9.5px;
+  color: #94a3b8;
+}
+
+/* The wire the menu is deciding about stays on screen, a shade quieter. */
+.wf-wire-pending.held {
+  opacity: 0.7;
 }
 
 .wf-canvas-controls {
@@ -1317,25 +1510,6 @@
 .wf-run-mini.skip {
   background: #e2e8f0;
   color: #475569;
-}
-
-.wf-port-config-out {
-  top: -6px;
-  bottom: auto;
-  left: 50%;
-  transform: translateX(-50%);
-  border-color: #c2410c;
-  background: #fff7ed;
-}
-
-.wf-port-config-in {
-  top: auto;
-  bottom: -6px;
-  transform: translateX(-50%);
-  border-color: #c2410c;
-  background: #fff7ed;
-  width: 9px;
-  height: 9px;
 }
 
 .wf-slot-label {

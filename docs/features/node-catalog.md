@@ -128,8 +128,8 @@ The tables below document every component exactly as declared in `node-registry.
 
 | id | Params | Executed by | Notes |
 |---|---|---|---|
-| `Input` | — | `InputExecutor` | Entry point; executor returns the run's user input |
-| `Output` | — | `OutputExecutor` | Marks the final output node; run output = its value |
+| `Input` | — | `InputExecutor` | Entry point; executor returns the run's user input. No data input, but it carries an error output like every other executing node |
+| `Output` | — | `OutputExecutor` | Marks the final output node; run output = its value. Terminal on success, so it has an error output but no data output |
 
 ### Prompt
 

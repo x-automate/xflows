@@ -26,28 +26,42 @@ Implemented in `components/Canvas.jsx`.
   the `+ / − / Reset` controls; plain wheel scrolls. Zoom % is shown in the canvas controls.
 - The viewport is applied as `transform: translate(x, y) scale(k)` on the canvas inner element;
   a 6000×6000 SVG layer holds all edges; a grid background scales with zoom.
-- **Nodes** are absolutely-positioned divs: 132×46 px for regular nodes, 200×110 px for
+- **Nodes** are absolutely-positioned divs: 132×56 px for regular nodes, 200×110 px for
   containers. Each shows its icon (inline SVG from the catalog), name, category, and — during
   runs — a live badge (spinner, duration in ms, or failed marker).
-- **Ports** are gated on the component's `kind`, never on its category. Every node that
-  executes offers the *same two outputs*, because any executor can throw:
+- **Ports** are declared by `catalog/port-model.js` and gated on the component's `kind`, never
+  on its category. Every node that executes offers the *same two outputs*, because any
+  executor can throw:
   - `in` — left edge, mid-height. Absent on `input` kinds (Input and the triggers).
-  - `out` — right edge, mid-height, black. The node's normal result.
-  - `error-out` — right edge, 20px lower, red. Runs instead when the node throws.
-  - Two structural exceptions: an `output` kind is the terminal sink and has no outputs at
-    all, and an `aux` kind (Langfuse, LangSmith, Tracer, Guardrail, Vector DB) attaches to a
-    container's config slot rather than to the data flow, so it has no data ports.
+  - `out` — right edge, mid-height, black. The node's normal result; solid wires.
+  - `error-out` — right edge, `ERROR_PORT_DROP` (18px) lower, red. Taken instead when the node
+    throws; dashed wires. Present on *every* node that runs — triggers and the terminal
+    `Output` included, since an Output that fails to deliver is still a failure worth routing.
+  - One structural exception: an `aux` kind (Langfuse, LangSmith, Tracer, Guardrail, Vector DB)
+    attaches to a container's config slot rather than to the data flow, so instead of data and
+    error bubbles it carries a single config bubble. `Output` is the one node with an error
+    output but no data output: it is the terminal sink, so nothing runs after it on success.
   - Category is *not* the gate: `TraceLog` and `ErrorLog` are categorised Observability but
     are ordinary inline transforms with full data ports. Gating on the category stripped them.
   - Config ports: a top-center `config-out` on any node whose category some container slot
     accepts (derived from the registry, not hardcoded), and labeled `config-in` slots along a
     container's bottom edge (declared by the container's `configs`).
+  - Bubbles render in their own `.wf-ports-layer` above the nodes, each placed at the canvas
+    coordinate `portsForNode()` returns and centred on it with `translate(-50%, -50%)`. The
+    stylesheet sets no offsets at all, and `sourcePortPos()` / `targetPortPos()` place the wire
+    ends from the same functions, so a wire cannot drift off the bubble it leaves. (It used to:
+    a `.wf-port` block declared *after* `.wf-port-error-out` won the cascade on equal
+    specificity, which parked every error bubble invisibly under its data bubble while the
+    error edge was still drawn 20px below. `workflow-css.test.js` resolves the cascade and
+    fails if any rule sets a port offset again.)
   - Port hit-testing uses `document.elementFromPoint` during wire dragging, so connections work
-    at any pan/zoom.
+    at any pan/zoom. The port layer is `pointer-events: none` so panning still works through
+    it, and dropping a provider on a container's own bubble still nests it in the container.
+    A node is dragged by its body — every bubble is a wire origin, not a handle.
 - **Edges** are cubic-bezier SVG paths:
   - **Data edges** (default `kind: "data"`): left-in → right-out, black arrow marker.
-  - **Error edges** (`kind: "error"`): from the red `error-out` port on the node's lower right
-    to a target's data-in, red (`#dc2626`) and dashed. Taken when the source node raises. The
+  - **Error edges** (`kind: "error"`): from the red `error-out` bubble on the node's lower right
+    to a target's data-in bubble, red (`#dc2626`) and dashed. Taken when the source node raises. The
     payload delivered is `{"value": "", "error": {message, nodeId, componentId}}` — note the
     blank `value`, which is why a plain `PromptTemplate` on an error branch renders nothing
     useful. Wire the branch into an **Error Log** node instead: it reads the error envelope,
@@ -60,6 +74,42 @@ Implemented in `components/Canvas.jsx`.
   - Edges can be selected and deleted, and a data/error edge can be re-typed or given a `when`
     predicate in the edge editor popover.
 
+### Wiring
+
+Every bubble starts a wire, in the direction that bubble implies (`portsForNode` carries a
+`direction`; `DROP_SELECTOR` in `Canvas.jsx` maps it to what the far end may land on):
+
+| Pulled from | Direction | Looking for | Edge |
+|---|---|---|---|
+| `out` | forward — the node is the **source** | a target's `in` | data |
+| `error-out` | forward | a target's `in` | error |
+| `config-out` | forward | a container's `config-in` | config |
+| `in` | reverse — the node is the **target** | a source's `out`, or its `error-out` | data, or error if dropped on the red bubble |
+| `config-in` | reverse | an aux node's `config-out` | config, into the slot it was pulled from |
+
+A wire released **on a bubble** connects to it; released **on a node body** it connects to that
+node's matching bubble (a forward config wire is the exception — with more than one slot the
+menu asks which). Released on **empty canvas** it opens the connect menu instead of vanishing.
+A click that never pulled the wire more than 4px is not a drop, so a stray click on a bubble
+does nothing.
+
+### Connect menu
+
+`components/ConnectMenu.jsx`, fed by `catalog/connect-candidates.js`.
+
+- Opens where the wire was let go, holding the wire on screen (dimmed) so the choice still reads
+  as "this wire goes to …". It lives in the canvas wrap, not the transformed inner layer, so it
+  keeps its size at any zoom, and it is clamped to stay inside the canvas.
+- **On this canvas** lists the nodes the wire may legally join; **Add a node** lists the
+  components it can create *and* wire in one commit — so one undo takes back both. Both lists
+  come from running the real `checkConnection` gate (against a probe node for the components),
+  so the menu can never offer a connection the canvas would then refuse. Providers and
+  `planned` components are left out of the create list: neither can stand on its own.
+- A config wire lists one row per slot that accepts the source, labelled with the slot name.
+- A created node is placed by `nodeOriginForPort` so the bubble the wire needs lands exactly on
+  the wire's loose end.
+- Type to filter, `↑`/`↓` to move, `Enter` to connect, `Esc` or a click on the backdrop to cancel.
+
 ### Connection rules
 
 `catalog/connection-rules.js` gates every connection **before** the edge is created; a refused
@@ -68,7 +118,7 @@ connection flashes the reason as a toast and nothing is drawn. `checkConnection`
 | Rule | Applies to |
 |---|---|
 | target is an `input`-kind node | data, error |
-| source is an `output`-kind node | data, error |
+| source is an `output`-kind node | data only — an Output can still route its own failure |
 | either end is an Observability node (they attach to config slots) | data, error |
 | either end is a nested provider (wire the container instead) | data, error, config |
 | source and target are the same node | all |

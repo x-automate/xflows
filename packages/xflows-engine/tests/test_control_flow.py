@@ -127,6 +127,33 @@ class ControlFlowGraphTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(outputs["recover"]["value"], "recovered from Output: upstream exploded")
         self.assertEqual(statuses["bad"], "failed_routed")
 
+    async def test_terminal_output_routes_its_own_failure(self) -> None:
+        """The editor gives every executing node an error output, the terminal
+        Output included: delivering the final answer can fail too. The run
+        output is still resolved from the Output node, not from the branch."""
+        nodes = [
+            {"id": "in", "componentId": "Input", "params": {}},
+            {"id": "out", "componentId": "Output", "params": {}},
+            {"id": "log", "componentId": "ErrorLog", "params": {}},
+        ]
+        edges = [
+            {"id": "e1", "source": "in", "target": "out", "kind": "data"},
+            {"id": "e2", "source": "out", "target": "log", "kind": "error"},
+        ]
+        runner = NodeGraphRunner(nodes=nodes, edges=edges, user_input="answer")
+
+        async def execute(node: dict, input_payload: dict) -> dict:
+            if node["id"] == "out":
+                raise RuntimeError("delivery failed")
+            if node["id"] == "log":
+                return {"value": f"logged: {input_payload.get('error', {}).get('message')}"}
+            return {"value": input_payload.get("value", "")}
+
+        outputs, order, statuses = await runner.run(execute)
+        self.assertEqual(statuses["out"], "failed_routed")
+        self.assertEqual(outputs["log"]["value"], "logged: delivery failed")
+        self.assertEqual(runner.resolve_output_node_id(order), "out")
+
     async def test_node_without_error_edge_fails_run(self) -> None:
         nodes = [
             {"id": "in", "componentId": "Input", "params": {}},

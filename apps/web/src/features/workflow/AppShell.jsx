@@ -203,6 +203,45 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
     });
   };
 
+  /**
+   * A wire dropped on empty canvas can pick a component instead of a node: the
+   * node arrives already touching the wire's loose end and the edge is made in
+   * the same commit, so one undo takes both back.
+   */
+  const connectToNewNode = (componentId, pos, link) => {
+    if (readOnly) return;
+    const meta = getComponentMeta(componentId);
+    if (!meta) return;
+    const node = {
+      id: uid(),
+      componentId,
+      x: pos?.x ?? 200,
+      y: pos?.y ?? 200,
+      params: {},
+    };
+    const nextNodes = [...nodes, node];
+    const source = link.direction === "reverse" ? node.id : link.anchorId;
+    const target = link.direction === "reverse" ? link.anchorId : node.id;
+    const kind = link.kind || "data";
+    const check = checkConnection({
+      nodes: nextNodes,
+      edges,
+      source,
+      target,
+      kind,
+      slot: link.slot,
+    });
+    if (!check.ok) {
+      flash(check.reason, "err");
+      return;
+    }
+    const edge = { id: `e_${uid()}`, source, target, kind };
+    if (link.slot) edge.slot = link.slot;
+    commit({ nodes: nextNodes, edges: [...edges, edge] });
+    setSelected(node.id);
+    flash(`${meta.name} connected.`);
+  };
+
   const updateEdge = (id, patch) => {
     if (readOnly) return;
     setGraph((current) => ({
@@ -729,6 +768,7 @@ function WorkflowAppShell({ projectId, readOnly = false, autoReplay = false, liv
               onNodeMove={moveNode}
               onNodeAdd={addNodeAt}
               onConnect={connect}
+              onConnectNew={connectToNewNode}
               onUpdateEdge={updateEdge}
               onDeleteEdge={deleteEdge}
               onDelete={(id) => {
