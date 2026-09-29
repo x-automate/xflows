@@ -1,17 +1,42 @@
 # Projects, Configs & Triggers
 
-How projects work end-to-end: creation on the Dashboard, the workspace tabs (Configs, Trigger),
-and how project data flows to the backend.
+How projects work end-to-end: creation on the Projects home, the workspace tabs (Configs,
+Trigger), and how project data flows to the backend.
 
-## Dashboard
+## Projects Home
 
-`apps/web/src/pages/Dashboard.jsx`
+`apps/web/src/features/projects/ProjectsHome.jsx`, routed at `/projects`
+(`/dashboard` redirects to it).
 
 - Lists projects: **remote-first** (`GET /projects`), falling back to the localStorage store on
-  API failure.
-- **New Project** creates one via `POST /projects` (localStorage mirror too) and navigates to
-  the project workspace.
-- Shows cards describing the API endpoints (useful during development).
+  API failure, which is said on the page rather than passed off as the real list.
+- Each row carries the project's run count, failure count, success rate, last run and trigger
+  chips, from `GET /projects/:id/runs` and `GET /projects/:id/triggers` — one pair of requests
+  per row, since neither endpoint is cross-project.
+- Four totals across the top: projects, active, total runs, success rate.
+- Search matches a name (substring, case-insensitive) or a project UUID by prefix; the
+  segmented control filters to active or paused.
+
+### Success rate
+
+`summariseRuns` in `features/projects/projectStats.js` rates a project over runs that
+**finished**: `succeeded / (succeeded + failed)`. Runs still in flight (`queued`, `running`,
+`awaiting_review`) and runs that ended without a verdict on the workflow (`cancelled`,
+`rejected`, `escalated`) stay out of the denominator, so starting a run does not dent the
+number. A project with nothing finished shows `—`, not `0%`.
+
+### Active / paused
+
+`ProjectRecord` has no active column, so the flag lives in `metadata.active` and defaults to
+active when absent. `PATCH /projects/:id` replaces `metadata` wholesale, so the toggle sends
+the merged object (`metadataWithActive`) rather than `{active}` alone.
+
+### New project
+
+The modal generates the UUID client-side — `POST /projects` accepts a caller-supplied `id` — so
+it can show the id and the destination URL before the project exists. **LLM starter** leaves
+the graph unset, which is what makes the editor seed its `STARTER` flow on first open;
+**Blank canvas** writes an explicitly empty graph to opt out of that.
 
 ## Status Page
 

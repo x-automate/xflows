@@ -53,7 +53,7 @@ function ProjectLayout() {
   }
 
   if (!project) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/projects" replace />;
   }
 
   const base = `/project/${projectId}`;

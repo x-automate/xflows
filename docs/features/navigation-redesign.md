@@ -1,8 +1,17 @@
 # Navigation & Tabs — Redesign Proposal
 
-Status: **proposal, not implemented.** This is the design half of the
+Status: **proposal, largely not implemented.** This is the design half of the
 [platform audit](../reference/platform-audit.md); the audit's defect fixes
-shipped, this has not. It is written to be argued with before any of it is built.
+shipped, most of this has not. It is written to be argued with before any of it
+is built.
+
+One piece has since shipped: **§2f** (Dashboard was a project picker named
+Dashboard) and the `/dashboard` → `/projects` row of §4. `/projects` is now a
+real project list with per-project run counts, success rate, last run and
+trigger chips, an active/paused flag, search, and a new-project modal — see
+[Projects home](projects-configs-triggers.md#projects-home). The app-bar
+project switcher from §3 is *not* part of that; the nav still lists Projects,
+Workflow Editor and Status as three peers.
 
 ## 1. What exists today
 
@@ -168,7 +177,7 @@ field, instead of a run failing and the user going to find it.
 
 | Today | Proposed | Note |
 |---|---|---|
-| `/dashboard` | `/projects` | plus app-bar switcher |
+| `/dashboard` | `/projects` | **done** (redirect kept); app-bar switcher not built |
 | `/editor` | — | remove; scratch work is a project |
 | `/status` | app bar | keep `/status` as a redirect |
 | `/project/:id/flow` | `/project/:id/build` | alias `flow` |

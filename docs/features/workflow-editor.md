@@ -8,7 +8,7 @@ history, run lifecycle, and toasts.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ Topbar: Dashboard · Workflow Editor · Status                     │
+│ Topbar: Projects · Workflow Editor · Status                      │
 ├──────────┬──────────────────────────────────────────┬────────────┤
 │ Component│                Canvas                    │ Steps Pane │
 │ Panel    │   (pan/zoom, nodes, wires)               │ Properties │
